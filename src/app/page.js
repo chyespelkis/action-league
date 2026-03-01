@@ -186,7 +186,7 @@ export default function Home() {
                 <p className="text-xs text-gray-300 mt-1 font-bold">Leaderboard: <span className="text-white">${walletBalance.toFixed(2)}</span></p>
                 
                 {/* THE NEW HEADER NAVIGATION */}
-                <div className="flex justify-end items-center gap-3 mt-2">
+                <div className="flex flex-wrap justify-end items-center gap-2 md:gap-3 mt-3">
                   
                   {/* SECRET COMMISSIONER DOORS */}
                   {user.email === COMMISSIONER_EMAIL && (
