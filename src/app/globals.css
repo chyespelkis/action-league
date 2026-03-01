@@ -1,26 +1,39 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --color-brand-dark: #0B132B;
+  --color-brand-panel: #1C2541;
+  --color-brand-volt: #39FF14;
+  --color-brand-violet: #8A2BE2;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* THE SPLASH SCREEN PULSE */
+@keyframes logo-pulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 15px rgba(57,255,20,0.2)); }
+  50% { transform: scale(1.15); filter: drop-shadow(0 0 40px rgba(57,255,20,0.8)); }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.animate-logo-pulse {
+  animation: logo-pulse 1s ease-in-out infinite;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* THE SPLASH SCREEN FADE OUT */
+@keyframes fade-out {
+  0% { opacity: 1; }
+  100% { opacity: 0; visibility: hidden; }
+}
+
+.animate-fade-out {
+  animation: fade-out 0.5s ease-out forwards;
+}
+
+/* THE NEW ENTRANCE ANIMATION */
+@keyframes pop-in {
+  0% { transform: scale(0.5) translateY(10px); opacity: 0; }
+  70% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.animate-pop-in {
+  animation: pop-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
