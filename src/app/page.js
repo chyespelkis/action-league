@@ -77,7 +77,6 @@ export default function Home() {
   async function saveDisplayName() {
     if (!tempName.trim()) return alert("Please enter a name.");
     
-    // Injects user.email into the profile creation
     const { error } = await supabase
       .from('profiles')
       .insert([{ 
@@ -99,6 +98,17 @@ export default function Home() {
     if (!w || isNaN(w)) return 0;
     let profit = odds > 0 ? w * (odds / 100) : w * (100 / Math.abs(odds));
     return (w + profit).toFixed(2);
+  };
+
+  // SAFETY NET: Bulletproof date formatting so bad database entries don't crash the app
+  const formatKickoff = (isoString) => {
+    try {
+      const date = new Date(isoString);
+      if (isNaN(date.getTime())) return "TBD";
+      return date.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return "TBD";
+    }
   };
 
   function handleSelectBet(game, selection, line, type, odds) {
@@ -139,7 +149,6 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gray-100 p-4 md:p-8 relative">
       
-      {/* THE CINEMATIC VIDEO SPLASH SCREEN */}
       {showSplash && (
         <div className={`fixed inset-0 z-[100] flex flex-col items-center justify-center bg-brand-dark bg-[url('/stars.png')] bg-cover bg-center bg-no-repeat ${fadeSplash ? 'animate-fade-out' : ''}`}>
           <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"></div>
@@ -161,7 +170,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Main Board Content */}
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center bg-brand-dark text-white p-6 rounded-2xl mb-8 shadow-2xl border-b-4 border-brand-violet relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-brand-volt opacity-5 rounded-full blur-3xl -mr-20 -mt-20"></div>
@@ -185,10 +193,7 @@ export default function Home() {
                 </p>
                 <p className="text-xs text-gray-300 mt-1 font-bold">Leaderboard: <span className="text-white">${walletBalance.toFixed(2)}</span></p>
                 
-                {/* THE NEW HEADER NAVIGATION */}
                 <div className="flex flex-wrap justify-end items-center gap-2 md:gap-3 mt-3">
-                  
-                  {/* SECRET COMMISSIONER DOORS */}
                   {user.email === COMMISSIONER_EMAIL && (
                     <>
                       <a href="/commissioner" className="text-[10px] text-brand-volt hover:text-white font-bold uppercase tracking-wider transition-colors drop-shadow-[0_0_5px_rgba(57,255,20,0.8)]">Front Office</a>
@@ -197,7 +202,6 @@ export default function Home() {
                       <span className="text-gray-600">|</span>
                     </>
                   )}
-
                   <a href="/my-bets" className="text-[10px] text-brand-violet hover:text-white font-bold uppercase tracking-wider transition-colors">My Slips</a>
                   <span className="text-gray-600">|</span>
                   <button onClick={handleSignOut} className="text-[10px] text-red-500 hover:text-red-400 font-bold uppercase tracking-wider transition-colors">Sign Out</button>
@@ -222,7 +226,7 @@ export default function Home() {
                 <div key={game.id} className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
                   <div className="bg-gray-50 px-4 py-2 border-b flex justify-between items-center">
                     <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">
-                      {new Date(game.kickoff).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      {formatKickoff(game.kickoff)}
                     </span>
                     <span className="text-[10px] bg-gray-200 px-2 py-0.5 rounded font-bold text-gray-600 uppercase">UFL</span>
                   </div>
@@ -244,7 +248,10 @@ export default function Home() {
                       <div className="grid grid-cols-3 gap-3 mb-3">
                         <button onClick={() => handleSelectBet(game, game.away_team, game.away_spread, 'spread', -110)} className="bg-gray-50 hover:bg-brand-dark hover:text-brand-volt border border-gray-200 p-2 md:p-3 rounded-lg transition-all flex justify-between items-center group">
                           <span className="text-[10px] md:text-xs font-bold text-gray-500 group-hover:text-brand-volt uppercase truncate mr-2">{game.away_team}</span>
-                          <span className="font-black text-sm">{game.away_spread > 0 ? `+${game.away_spread}` : game.away_spread}</span>
+                          <div className="text-right">
+                            <span className="font-black text-sm block leading-none">{game.away_spread > 0 ? `+${game.away_spread}` : game.away_spread}</span>
+                            <span className="text-[9px] text-gray-400 group-hover:text-brand-volt font-bold block mt-1">-110</span>
+                          </div>
                         </button>
                         <button onClick={() => handleSelectBet(game, game.away_team, 'ML', 'moneyline', game.away_ml)} className="bg-gray-50 hover:bg-brand-dark hover:text-brand-volt border border-gray-200 p-2 md:p-3 rounded-lg transition-all flex justify-between items-center group">
                           <span className="text-[10px] md:text-xs font-bold text-gray-500 group-hover:text-brand-volt uppercase truncate mr-2">{game.away_team}</span>
@@ -252,14 +259,20 @@ export default function Home() {
                         </button>
                         <button onClick={() => handleSelectBet(game, 'Over', game.total_points, 'total', -110)} className="bg-gray-50 hover:bg-brand-dark hover:text-brand-volt border border-gray-200 p-2 md:p-3 rounded-lg transition-all flex justify-between items-center group">
                           <span className="text-[10px] md:text-xs font-bold text-gray-500 group-hover:text-brand-volt uppercase mr-2">Over</span>
-                          <span className="font-black text-sm">{game.total_points}</span>
+                          <div className="text-right">
+                            <span className="font-black text-sm block leading-none">{game.total_points}</span>
+                            <span className="text-[9px] text-gray-400 group-hover:text-brand-volt font-bold block mt-1">-110</span>
+                          </div>
                         </button>
                       </div>
 
                       <div className="grid grid-cols-3 gap-3">
                         <button onClick={() => handleSelectBet(game, game.home_team, game.home_spread, 'spread', -110)} className="bg-gray-50 hover:bg-brand-dark hover:text-brand-volt border border-gray-200 p-2 md:p-3 rounded-lg transition-all flex justify-between items-center group">
                           <span className="text-[10px] md:text-xs font-bold text-gray-500 group-hover:text-brand-volt uppercase truncate mr-2">{game.home_team}</span>
-                          <span className="font-black text-sm">{game.home_spread > 0 ? `+${game.home_spread}` : game.home_spread}</span>
+                          <div className="text-right">
+                            <span className="font-black text-sm block leading-none">{game.home_spread > 0 ? `+${game.home_spread}` : game.home_spread}</span>
+                            <span className="text-[9px] text-gray-400 group-hover:text-brand-volt font-bold block mt-1">-110</span>
+                          </div>
                         </button>
                         <button onClick={() => handleSelectBet(game, game.home_team, 'ML', 'moneyline', game.home_ml)} className="bg-gray-50 hover:bg-brand-dark hover:text-brand-volt border border-gray-200 p-2 md:p-3 rounded-lg transition-all flex justify-between items-center group">
                           <span className="text-[10px] md:text-xs font-bold text-gray-500 group-hover:text-brand-volt uppercase truncate mr-2">{game.home_team}</span>
@@ -267,7 +280,10 @@ export default function Home() {
                         </button>
                         <button onClick={() => handleSelectBet(game, 'Under', game.total_points, 'total', -110)} className="bg-gray-50 hover:bg-brand-dark hover:text-brand-volt border border-gray-200 p-2 md:p-3 rounded-lg transition-all flex justify-between items-center group">
                           <span className="text-[10px] md:text-xs font-bold text-gray-500 group-hover:text-brand-volt uppercase mr-2">Under</span>
-                          <span className="font-black text-sm">{game.total_points}</span>
+                          <div className="text-right">
+                            <span className="font-black text-sm block leading-none">{game.total_points}</span>
+                            <span className="text-[9px] text-gray-400 group-hover:text-brand-volt font-bold block mt-1">-110</span>
+                          </div>
                         </button>
                       </div>
                     </div>
@@ -279,7 +295,6 @@ export default function Home() {
         )}
       </div>
 
-      {/* Name Prompt Modal */}
       {showNamePrompt && (
         <div className="fixed inset-0 bg-brand-dark/90 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-brand-panel p-8 rounded-2xl shadow-2xl max-w-sm w-full border-b-8 border-brand-volt">
@@ -297,7 +312,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Bet Slip Modal */}
       {selectedBet && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-sm w-full border-b-8 border-brand-dark">
@@ -332,7 +346,7 @@ export default function Home() {
 
             <div className="bg-brand-dark p-3 rounded-xl mb-6 flex justify-between items-center">
               <span className="text-xs font-bold text-brand-violet uppercase">Potential Payout</span>
-              <span className="text-lg font-black text-brand-volt">${potentialPayout}</span>
+              <span className="text-lg font-black text-brand-volt">${calculatePayout(wagerAmount, selectedBet.odds)}</span>
             </div>
 
             <button onClick={submitWager} disabled={processing} className="w-full bg-brand-volt text-brand-dark font-black py-4 rounded-xl hover:bg-white shadow-[0_0_10px_rgba(57,255,20,0.4)] transition-all uppercase tracking-widest">
