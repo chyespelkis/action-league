@@ -15,7 +15,9 @@ export default function Commissioner() {
   const [authLoading, setAuthLoading] = useState(true);
 
   const [homeTeam, setHomeTeam] = useState('');
+  const [homeAbbr, setHomeAbbr] = useState('');
   const [awayTeam, setAwayTeam] = useState('');
+  const [awayAbbr, setAwayAbbr] = useState('');
   const [kickoff, setKickoff] = useState('');
   const [homeSpread, setHomeSpread] = useState('');
   const [homeML, setHomeML] = useState('');
@@ -49,8 +51,12 @@ export default function Commissioner() {
   async function handleAddGame(e) {
     e.preventDefault();
     setStatusMessage('Adding game to database...');
-    const { error } = await supabase.from('games').insert([{
-        home_team: homeTeam, away_team: awayTeam, kickoff: new Date(kickoff).toISOString(),
+      const { error } = await supabase.from('games').insert([{
+        home_team: homeTeam, 
+        away_team: awayTeam,
+        home_abbr: homeAbbr.toUpperCase(), // Saves it as BHAM
+        away_abbr: awayAbbr.toUpperCase(), // Saves it as STAL
+        kickoff: new Date(kickoff).toISOString(),
         home_spread: parseFloat(homeSpread), away_spread: parseFloat(homeSpread) * -1,
         home_ml: parseInt(homeML), away_ml: parseInt(awayML), total_points: parseFloat(total)
       }]);

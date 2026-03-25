@@ -246,17 +246,22 @@ export default function Home() {
                       </div>
 
                       <div className="grid grid-cols-3 gap-3 mb-3">
+                        {/* AWAY SPREAD BUTTON */}
                         <button onClick={() => handleSelectBet(game, game.away_team, game.away_spread, 'spread', -110)} className="bg-gray-50 hover:bg-brand-dark hover:text-brand-volt border border-gray-200 p-2 md:p-3 rounded-lg transition-all flex justify-between items-center group">
-                          <span className="text-[10px] md:text-xs font-bold text-gray-500 group-hover:text-brand-volt uppercase truncate mr-2">{game.away_team}</span>
+                          <span className="text-[10px] md:text-xs font-bold text-gray-500 group-hover:text-brand-volt uppercase truncate mr-2">{game.away_abbr || game.away_team}</span>
                           <div className="text-right">
                             <span className="font-black text-sm block leading-none">{game.away_spread > 0 ? `+${game.away_spread}` : game.away_spread}</span>
                             <span className="text-[9px] text-gray-400 group-hover:text-brand-volt font-bold block mt-1">-110</span>
                           </div>
                         </button>
+                        
+                        {/* AWAY MONEYLINE BUTTON */}
                         <button onClick={() => handleSelectBet(game, game.away_team, 'ML', 'moneyline', game.away_ml)} className="bg-gray-50 hover:bg-brand-dark hover:text-brand-volt border border-gray-200 p-2 md:p-3 rounded-lg transition-all flex justify-between items-center group">
-                          <span className="text-[10px] md:text-xs font-bold text-gray-500 group-hover:text-brand-volt uppercase truncate mr-2">{game.away_team}</span>
+                          <span className="text-[10px] md:text-xs font-bold text-gray-500 group-hover:text-brand-volt uppercase truncate mr-2">{game.away_abbr || game.away_team}</span>
                           <span className="font-black text-sm">{game.away_ml > 0 ? `+${game.away_ml}` : game.away_ml}</span>
                         </button>
+                        
+                        {/* OVER BUTTON (Total stays the same) */}
                         <button onClick={() => handleSelectBet(game, 'Over', game.total_points, 'total', -110)} className="bg-gray-50 hover:bg-brand-dark hover:text-brand-volt border border-gray-200 p-2 md:p-3 rounded-lg transition-all flex justify-between items-center group">
                           <span className="text-[10px] md:text-xs font-bold text-gray-500 group-hover:text-brand-volt uppercase mr-2">Over</span>
                           <div className="text-right">
@@ -267,17 +272,22 @@ export default function Home() {
                       </div>
 
                       <div className="grid grid-cols-3 gap-3">
+                        {/* HOME SPREAD BUTTON */}
                         <button onClick={() => handleSelectBet(game, game.home_team, game.home_spread, 'spread', -110)} className="bg-gray-50 hover:bg-brand-dark hover:text-brand-volt border border-gray-200 p-2 md:p-3 rounded-lg transition-all flex justify-between items-center group">
-                          <span className="text-[10px] md:text-xs font-bold text-gray-500 group-hover:text-brand-volt uppercase truncate mr-2">{game.home_team}</span>
+                          <span className="text-[10px] md:text-xs font-bold text-gray-500 group-hover:text-brand-volt uppercase truncate mr-2">{game.home_abbr || game.home_team}</span>
                           <div className="text-right">
                             <span className="font-black text-sm block leading-none">{game.home_spread > 0 ? `+${game.home_spread}` : game.home_spread}</span>
                             <span className="text-[9px] text-gray-400 group-hover:text-brand-volt font-bold block mt-1">-110</span>
                           </div>
                         </button>
+                        
+                        {/* HOME MONEYLINE BUTTON */}
                         <button onClick={() => handleSelectBet(game, game.home_team, 'ML', 'moneyline', game.home_ml)} className="bg-gray-50 hover:bg-brand-dark hover:text-brand-volt border border-gray-200 p-2 md:p-3 rounded-lg transition-all flex justify-between items-center group">
-                          <span className="text-[10px] md:text-xs font-bold text-gray-500 group-hover:text-brand-volt uppercase truncate mr-2">{game.home_team}</span>
+                          <span className="text-[10px] md:text-xs font-bold text-gray-500 group-hover:text-brand-volt uppercase truncate mr-2">{game.home_abbr || game.home_team}</span>
                           <span className="font-black text-sm">{game.home_ml > 0 ? `+${game.home_ml}` : game.home_ml}</span>
                         </button>
+                        
+                        {/* UNDER BUTTON (Total stays the same) */}
                         <button onClick={() => handleSelectBet(game, 'Under', game.total_points, 'total', -110)} className="bg-gray-50 hover:bg-brand-dark hover:text-brand-volt border border-gray-200 p-2 md:p-3 rounded-lg transition-all flex justify-between items-center group">
                           <span className="text-[10px] md:text-xs font-bold text-gray-500 group-hover:text-brand-volt uppercase mr-2">Under</span>
                           <div className="text-right">
