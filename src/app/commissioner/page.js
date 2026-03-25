@@ -124,6 +124,32 @@ export default function Commissioner() {
             <h2 className="text-2xl font-black italic uppercase text-brand-dark mb-6">Add Lines</h2>
             
             <form onSubmit={handleAddGame} className="space-y-4">
+              
+              {/* 1. TEAM NAMES */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase">Away Team</label>
+                  <input type="text" required value={awayTeam} onChange={(e) => setAwayTeam(e.target.value)} placeholder="Birmingham Stallions" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase">Home Team</label>
+                  <input type="text" required value={homeTeam} onChange={(e) => setHomeTeam(e.target.value)} placeholder="Arlington Renegades" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
+                </div>
+              </div>
+
+              {/* 2. ABBREVIATIONS */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase">Away Abbr</label>
+                  <input type="text" required maxLength="4" value={awayAbbr} onChange={(e) => setAwayAbbr(e.target.value)} placeholder="BHAM" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-black uppercase focus:border-brand-violet outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase">Home Abbr</label>
+                  <input type="text" required maxLength="4" value={homeAbbr} onChange={(e) => setHomeAbbr(e.target.value)} placeholder="ARL" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-black uppercase focus:border-brand-violet outline-none" />
+                </div>
+              </div>
+
+              {/* 3. WEEK NUMBER & KICKOFF */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase">Week Number</label>
@@ -135,23 +161,7 @@ export default function Commissioner() {
                 </div>
               </div>
 
-              {/* NEW ABBREVIATION ROW */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Week Number</label>
-                  <input type="number" min="1" required value={weekNumber} onChange={(e) => setWeekNumber(e.target.value)} className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-black text-brand-dark focus:border-brand-violet outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Kickoff Time</label>
-                  <input type="datetime-local" required value={kickoff} onChange={(e) => setKickoff(e.target.value)} className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase">Kickoff Time</label>
-                <input type="datetime-local" required value={kickoff} onChange={(e) => setKickoff(e.target.value)} className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
-              </div>
-
+              {/* 4. BETTING LINES */}
               <div className="grid grid-cols-3 gap-2 bg-gray-50 p-4 rounded-xl border border-gray-200">
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase">Home Spread</label>
@@ -167,6 +177,7 @@ export default function Commissioner() {
                 </div>
               </div>
 
+              {/* 5. GAME TOTAL */}
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase">Game Total (O/U)</label>
                 <input type="number" step="0.5" required value={total} onChange={(e) => setTotal(e.target.value)} placeholder="44.5" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
