@@ -22,6 +22,7 @@ export default function Commissioner() {
   const [homeML, setHomeML] = useState('');
   const [awayML, setAwayML] = useState('');
   const [total, setTotal] = useState('');
+  const [weekNumber, setWeekNumber] = useState(1); // <-- ADD THIS LINE
   const [statusMessage, setStatusMessage] = useState('');
   
   const [activeGames, setActiveGames] = useState([]);
@@ -60,7 +61,8 @@ export default function Commissioner() {
         away_spread: parseFloat(homeSpread) * -1,
         home_ml: parseInt(homeML), 
         away_ml: parseInt(awayML), 
-        total_points: parseFloat(total)
+        total_points: parseFloat(total),
+        week_number: parseInt(weekNumber) // <-- ADD THIS LINE
       }]);
       
     if (error) {
@@ -124,24 +126,24 @@ export default function Commissioner() {
             <form onSubmit={handleAddGame} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Away Team</label>
-                  <input type="text" required value={awayTeam} onChange={(e) => setAwayTeam(e.target.value)} placeholder="Birmingham Stallions" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
+                  <label className="block text-xs font-bold text-gray-500 uppercase">Week Number</label>
+                  <input type="number" min="1" required value={weekNumber} onChange={(e) => setWeekNumber(e.target.value)} className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-black text-brand-dark focus:border-brand-violet outline-none" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Home Team</label>
-                  <input type="text" required value={homeTeam} onChange={(e) => setHomeTeam(e.target.value)} placeholder="Arlington Renegades" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
+                  <label className="block text-xs font-bold text-gray-500 uppercase">Kickoff Time</label>
+                  <input type="datetime-local" required value={kickoff} onChange={(e) => setKickoff(e.target.value)} className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
                 </div>
               </div>
 
               {/* NEW ABBREVIATION ROW */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Away Abbr</label>
-                  <input type="text" required maxLength="4" value={awayAbbr} onChange={(e) => setAwayAbbr(e.target.value)} placeholder="BHAM" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-black uppercase focus:border-brand-violet outline-none" />
+                  <label className="block text-xs font-bold text-gray-500 uppercase">Week Number</label>
+                  <input type="number" min="1" required value={weekNumber} onChange={(e) => setWeekNumber(e.target.value)} className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-black text-brand-dark focus:border-brand-violet outline-none" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Home Abbr</label>
-                  <input type="text" required maxLength="4" value={homeAbbr} onChange={(e) => setHomeAbbr(e.target.value)} placeholder="ARL" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-black uppercase focus:border-brand-violet outline-none" />
+                  <label className="block text-xs font-bold text-gray-500 uppercase">Kickoff Time</label>
+                  <input type="datetime-local" required value={kickoff} onChange={(e) => setKickoff(e.target.value)} className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
                 </div>
               </div>
 
