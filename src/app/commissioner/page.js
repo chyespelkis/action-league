@@ -7,7 +7,6 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// 🛑 REPLACE THIS WITH YOUR ACTUAL LOGIN EMAIL 🛑
 const COMMISSIONER_EMAIL = 'chyespelkis@gmail.com';
 
 export default function Commissioner() {
@@ -15,8 +14,8 @@ export default function Commissioner() {
   const [authLoading, setAuthLoading] = useState(true);
 
   const [homeTeam, setHomeTeam] = useState('');
-  const [homeAbbr, setHomeAbbr] = useState('');
   const [awayTeam, setAwayTeam] = useState('');
+  const [homeAbbr, setHomeAbbr] = useState('');
   const [awayAbbr, setAwayAbbr] = useState('');
   const [kickoff, setKickoff] = useState('');
   const [homeSpread, setHomeSpread] = useState('');
@@ -51,20 +50,25 @@ export default function Commissioner() {
   async function handleAddGame(e) {
     e.preventDefault();
     setStatusMessage('Adding game to database...');
-      const { error } = await supabase.from('games').insert([{
+    const { error } = await supabase.from('games').insert([{
         home_team: homeTeam, 
-        away_team: awayTeam,
-        home_abbr: homeAbbr.toUpperCase(), // Saves it as BHAM
-        away_abbr: awayAbbr.toUpperCase(), // Saves it as STAL
+        away_team: awayTeam, 
+        home_abbr: homeAbbr.toUpperCase(),
+        away_abbr: awayAbbr.toUpperCase(),
         kickoff: new Date(kickoff).toISOString(),
-        home_spread: parseFloat(homeSpread), away_spread: parseFloat(homeSpread) * -1,
-        home_ml: parseInt(homeML), away_ml: parseInt(awayML), total_points: parseFloat(total)
+        home_spread: parseFloat(homeSpread), 
+        away_spread: parseFloat(homeSpread) * -1,
+        home_ml: parseInt(homeML), 
+        away_ml: parseInt(awayML), 
+        total_points: parseFloat(total)
       }]);
+      
     if (error) {
       setStatusMessage(`Error: ${error.message}`);
     } else {
       setStatusMessage('Touchdown! The full board is updated.');
-      setHomeTeam(''); setAwayTeam(''); setKickoff(''); setHomeSpread(''); setHomeML(''); setAwayML(''); setTotal('');
+      setHomeTeam(''); setAwayTeam(''); setHomeAbbr(''); setAwayAbbr(''); 
+      setKickoff(''); setHomeSpread(''); setHomeML(''); setAwayML(''); setTotal('');
       fetchData();
     }
   }
@@ -104,7 +108,6 @@ export default function Commissioner() {
     <main className="min-h-screen bg-gray-100 p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
         
-        {/* NEW COMMISSIONER HEADER WITH HOME BUTTON */}
         <div className="flex justify-between items-end mb-8 border-b-4 border-brand-violet pb-4">
           <h1 className="text-3xl font-black uppercase italic tracking-tighter text-brand-dark">Front Office</h1>
           <a href="/" className="bg-brand-dark text-brand-volt px-4 py-2 rounded-lg font-black uppercase tracking-widest hover:bg-brand-panel transition-colors text-[10px] md:text-xs shadow-md">
@@ -122,11 +125,23 @@ export default function Commissioner() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase">Away Team</label>
-                  <input type="text" required value={awayTeam} onChange={(e) => setAwayTeam(e.target.value)} className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
+                  <input type="text" required value={awayTeam} onChange={(e) => setAwayTeam(e.target.value)} placeholder="Birmingham Stallions" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase">Home Team</label>
-                  <input type="text" required value={homeTeam} onChange={(e) => setHomeTeam(e.target.value)} className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
+                  <input type="text" required value={homeTeam} onChange={(e) => setHomeTeam(e.target.value)} placeholder="Arlington Renegades" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
+                </div>
+              </div>
+
+              {/* NEW ABBREVIATION ROW */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase">Away Abbr</label>
+                  <input type="text" required maxLength="4" value={awayAbbr} onChange={(e) => setAwayAbbr(e.target.value)} placeholder="BHAM" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-black uppercase focus:border-brand-violet outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase">Home Abbr</label>
+                  <input type="text" required maxLength="4" value={homeAbbr} onChange={(e) => setHomeAbbr(e.target.value)} placeholder="ARL" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-black uppercase focus:border-brand-violet outline-none" />
                 </div>
               </div>
 
@@ -165,8 +180,6 @@ export default function Commissioner() {
 
           {/* RIGHT COLUMN: Manage Board & Manage Roster */}
           <div className="space-y-8">
-            
-            {/* Manage Games */}
             <div className="bg-white p-8 rounded-xl shadow-md border border-gray-200">
               <h2 className="text-2xl font-black italic uppercase mb-6 text-brand-dark">Manage Board</h2>
               <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
@@ -190,7 +203,6 @@ export default function Commissioner() {
               </div>
             </div>
 
-            {/* Manage Roster (Delete Users) */}
             <div className="bg-white p-8 rounded-xl shadow-md border border-gray-200">
               <h2 className="text-2xl font-black italic uppercase mb-6 text-brand-dark">Manage Roster</h2>
               <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
