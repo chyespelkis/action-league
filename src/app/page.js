@@ -43,6 +43,34 @@ export default function Home() {
     return () => supabase.removeChannel(channel);
   }, []);
 
+  // --- 2026 PAYOUT ENGINE ---
+  const calculatePayout = (wager, line) => {
+    const amount = parseFloat(wager);
+    if (isNaN(amount) || amount <= 0) return { profit: 0, total: 0 };
+    
+    // Default to -110 if it's a spread/total without a specific price
+    const odds = (line === 'ML' || !line) ? -110 : parseFloat(line);
+    let profit = 0;
+
+    if (odds > 0) {
+      profit = (amount * odds) / 100;
+    } else {
+      profit = amount / (Math.abs(odds) / 100);
+    }
+    
+    return { 
+      profit: profit.toFixed(2), 
+      total: (amount + profit).toFixed(2) 
+    };
+  };
+
+  const formatLine = (val) => {
+    if (!val || val === '—') return '—';
+    const num = parseFloat(val);
+    if (isNaN(num)) return val;
+    return num > 0 ? `+${num}` : num;
+  };
+
   const handlePlaceBet = async () => {
     if (!betAmount || !selectedBet || !user) return;
     setIsSubmitting(true);
@@ -59,9 +87,9 @@ export default function Home() {
       }
       setSelectedBet(null);
       setBetAmount("");
-      alert("Bet Placed!");
+      alert("Locked In!");
       window.location.reload();
-    } catch (err) { alert("Error placing bet."); }
+    } catch (err) { alert("Error."); }
     finally { setIsSubmitting(false); }
   };
 
@@ -91,8 +119,10 @@ export default function Home() {
         <div className="lg:col-span-3 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {games.map(game => {
-              const totalVal = game.over_under || game.total || game.over_under_line || '—';
+              // DATA DETECTIVE: Check every possible column for the O/U line
+              const totalVal = game.over_under || game.total || game.over_under_line || game.total_points || '—';
               const spreadVal = game.away_spread || game.spread || 0;
+              
               return (
                 <div key={game.id} className="bg-white rounded-3xl shadow-xl border-2 border-white overflow-hidden">
                   <div className="bg-slate-50 p-3 border-b flex justify-between px-4">
@@ -108,7 +138,7 @@ export default function Home() {
                     <div className="grid grid-cols-3 gap-3">
                       <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'spread', line: spreadVal })} className="bg-slate-50 p-4 rounded-2xl hover:bg-brand-volt transition-all border border-gray-100 flex flex-col items-center">
                         <span className="text-[9px] font-black text-gray-400 uppercase mb-1">Spread</span>
-                        <span className="font-black text-sm">{spreadVal > 0 ? `+${spreadVal}` : spreadVal}</span>
+                        <span className="font-black text-sm">{formatLine(spreadVal)}</span>
                       </button>
                       <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'moneyline', line: 'ML' })} className="bg-slate-50 p-4 rounded-2xl hover:bg-brand-volt transition-all border border-gray-100 flex flex-col items-center">
                         <span className="text-[9px] font-black text-gray-400 uppercase mb-1">ML</span>
@@ -161,13 +191,29 @@ export default function Home() {
             <div className="bg-brand-dark p-6 text-white">
               <p className="text-brand-volt font-black uppercase tracking-widest text-[10px] mb-2">Review Ticket</p>
               <h2 className="text-2xl font-black uppercase italic tracking-tighter">
-                {selectedBet.selection} {selectedBet.type !== 'moneyline' ? selectedBet.line : 'ML'}
+                {selectedBet.selection} {selectedBet.type !== 'moneyline' ? formatLine(selectedBet.line) : 'ML'}
               </h2>
               <p className="text-gray-400 text-xs font-bold mt-1 uppercase">{selectedBet.game.away_abbr} @ {selectedBet.game.home_abbr}</p>
             </div>
+            
             <div className="p-8">
               <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Wager Amount ($)</label>
-              <input type="number" autoFocus value={betAmount} onChange={(e) => setBetAmount(e.target.value)} placeholder="0.00" className="w-full text-4xl font-black border-b-4 border-gray-100 focus:border-brand-violet outline-none pb-2 text-brand-dark" />
+              <input type="number" autoFocus value={betAmount} onChange={(e) => setBetAmount(e.target.value)} placeholder="0.00" className="w-full text-4xl font-black border-b-4 border-gray-100 focus:border-brand-violet outline-none pb-2 text-brand-dark mb-6" />
+              
+              {/* REAL-TIME PAYOUT PREVIEW */}
+              {betAmount > 0 && (
+                <div className="bg-slate-50 p-4 rounded-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="flex justify-between mb-1">
+                    <span className="text-[10px] font-black text-gray-400 uppercase">To Win (Profit)</span>
+                    <span className="text-sm font-black text-green-600">+${calculatePayout(betAmount, selectedBet.line).profit}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] font-black text-gray-400 uppercase">Total Payout</span>
+                    <span className="text-sm font-black text-brand-dark">${calculatePayout(betAmount, selectedBet.line).total}</span>
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-4 mt-8">
                 <button onClick={() => setSelectedBet(null)} className="w-1/3 text-gray-400 font-black uppercase text-xs">Cancel</button>
                 <button onClick={handlePlaceBet} disabled={isSubmitting} className="w-2/3 bg-brand-dark text-brand-volt py-4 rounded-xl font-black uppercase tracking-widest hover:bg-brand-panel transition-all shadow-lg active:scale-95 disabled:opacity-50">
