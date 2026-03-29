@@ -83,7 +83,6 @@ export default function Home() {
     finally { setIsSubmitting(false); }
   };
 
-  // The Magic Fix for your Admin Buttons
   const isCommissioner = profile?.role === 'admin' || profile?.display_name?.toUpperCase() === 'CJYES';
 
   return (
@@ -143,50 +142,49 @@ export default function Home() {
                     <span className="text-[9px] font-black bg-brand-violet text-white px-2 py-0.5 rounded uppercase shadow-sm">Week {game.week_number}</span>
                   </div>
 
-                  {/* VEGAS GRID BODY */}
-                  <div className="p-4 md:p-5">
-                    
-                    {/* CUSTOM SPACING: Matchup gets 1.5x the width of the odds */}
-                    <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-2 mb-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-center px-1">
-                      <div className="text-left pl-2">Matchup</div>
+                  <div className="p-4 md:p-6">
+                    {/* FULL TEAM NAMES (Centered Header) */}
+                    <div className="text-center mb-5 pb-4 border-b border-gray-100">
+                      <h3 className="font-black text-lg md:text-xl text-brand-dark uppercase tracking-tight">
+                        {game.away_team} <span className="text-gray-300 font-medium mx-2 italic">@</span> {game.home_team}
+                      </h3>
+                    </div>
+
+                    {/* PERFECTLY ALIGNED GRID */}
+                    <div className="grid grid-cols-[50px_1fr_1fr_1fr] md:grid-cols-[60px_1fr_1fr_1fr] gap-2 md:gap-3 mb-2 text-[9px] font-black text-gray-400 uppercase tracking-widest text-center items-end pb-1">
+                      <div></div> {/* Empty space for abbreviations */}
                       <div>Spread</div>
                       <div>Moneyline</div>
                       <div>Total</div>
                     </div>
 
                     {/* AWAY ROW */}
-                    <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-2 items-center mb-3">
-                      <div className="flex flex-col border-l-4 border-gray-300 pl-2">
-                        <span className="font-black text-sm md:text-base text-brand-dark uppercase leading-tight truncate">{game.away_team}</span>
-                        <span className="text-[10px] font-bold text-gray-400 uppercase">{game.away_abbr}</span>
-                      </div>
+                    <div className="grid grid-cols-[50px_1fr_1fr_1fr] md:grid-cols-[60px_1fr_1fr_1fr] gap-2 md:gap-3 items-center mb-3">
+                      <div className="font-black text-brand-dark text-xs md:text-sm text-center">{game.away_abbr}</div>
                       
-                      <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'spread', line: awaySpread })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark p-2 md:p-3 rounded-xl transition-all border border-gray-200 font-black text-xs md:text-sm text-center shadow-sm">
+                      <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'spread', line: awaySpread })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-3 rounded-xl transition-all border border-gray-200 font-black text-sm text-center shadow-sm">
                         {formatLine(awaySpread)}
                       </button>
-                      <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'moneyline', line: 'ML' })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark p-2 md:p-3 rounded-xl transition-all border border-gray-200 font-black text-xs md:text-sm text-center shadow-sm">
+                      <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'moneyline', line: 'ML' })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-3 rounded-xl transition-all border border-gray-200 font-black text-sm text-center shadow-sm">
                         ML
                       </button>
-                      <button onClick={() => setSelectedBet({ game, selection: 'OVER', type: 'total', line: totalVal })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark p-1.5 md:p-2 rounded-xl transition-all border border-gray-200 font-black text-xs md:text-sm text-center flex flex-col items-center justify-center shadow-sm">
+                      <button onClick={() => setSelectedBet({ game, selection: 'OVER', type: 'total', line: totalVal })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 font-black text-sm text-center flex flex-col items-center justify-center shadow-sm">
                         <span className="text-[8px] uppercase text-gray-500 leading-none mb-1 font-bold">Over</span>
                         <span className="leading-none">{totalVal}</span>
                       </button>
                     </div>
 
                     {/* HOME ROW */}
-                    <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-2 items-center">
-                      <div className="flex flex-col border-l-4 border-brand-violet pl-2">
-                        <span className="font-black text-sm md:text-base text-brand-dark uppercase leading-tight truncate">{game.home_team}</span>
-                        <span className="text-[10px] font-bold text-brand-violet uppercase">{game.home_abbr}</span>
-                      </div>
+                    <div className="grid grid-cols-[50px_1fr_1fr_1fr] md:grid-cols-[60px_1fr_1fr_1fr] gap-2 md:gap-3 items-center">
+                      <div className="font-black text-brand-violet text-xs md:text-sm text-center">{game.home_abbr}</div>
                       
-                      <button onClick={() => setSelectedBet({ game, selection: game.home_abbr, type: 'spread', line: homeSpread })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark p-2 md:p-3 rounded-xl transition-all border border-gray-200 font-black text-xs md:text-sm text-center shadow-sm">
+                      <button onClick={() => setSelectedBet({ game, selection: game.home_abbr, type: 'spread', line: homeSpread })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-3 rounded-xl transition-all border border-gray-200 font-black text-sm text-center shadow-sm">
                         {formatLine(homeSpread)}
                       </button>
-                      <button onClick={() => setSelectedBet({ game, selection: game.home_abbr, type: 'moneyline', line: 'ML' })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark p-2 md:p-3 rounded-xl transition-all border border-gray-200 font-black text-xs md:text-sm text-center shadow-sm">
+                      <button onClick={() => setSelectedBet({ game, selection: game.home_abbr, type: 'moneyline', line: 'ML' })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-3 rounded-xl transition-all border border-gray-200 font-black text-sm text-center shadow-sm">
                         ML
                       </button>
-                      <button onClick={() => setSelectedBet({ game, selection: 'UNDER', type: 'total', line: totalVal })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark p-1.5 md:p-2 rounded-xl transition-all border border-gray-200 font-black text-xs md:text-sm text-center flex flex-col items-center justify-center shadow-sm">
+                      <button onClick={() => setSelectedBet({ game, selection: 'UNDER', type: 'total', line: totalVal })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 font-black text-sm text-center flex flex-col items-center justify-center shadow-sm">
                         <span className="text-[8px] uppercase text-gray-500 leading-none mb-1 font-bold">Under</span>
                         <span className="leading-none">{totalVal}</span>
                       </button>
@@ -199,7 +197,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* SIDEBAR (Kept Dark for Contrast/Personality) */}
+        {/* SIDEBAR (Kept Dark for Contrast) */}
         <div className="space-y-6">
            <div className="bg-[#0b0f19] rounded-2xl p-6 text-white shadow-xl border-t-4 border-brand-volt">
               <h3 className="font-black italic uppercase tracking-tighter text-xl mb-4 text-brand-volt">League Intel</h3>
