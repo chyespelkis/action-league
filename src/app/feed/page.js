@@ -13,7 +13,6 @@ export default function ActionFeed() {
 
   useEffect(() => {
     async function loadFeed() {
-      // Pulls every bet, plus the associated game details and the player's display name
       const { data, error } = await supabase
         .from('bets')
         .select(`
@@ -22,6 +21,12 @@ export default function ActionFeed() {
           profiles (display_name)
         `)
         .order('created_at', { ascending: false });
+
+      // ADD THIS ERROR CATCHER
+      if (error) {
+        console.error("Supabase Error:", error);
+        alert("Database Error: " + error.message);
+      }
 
       if (data) setFeed(data);
       setLoading(false);
