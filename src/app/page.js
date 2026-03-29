@@ -45,11 +45,20 @@ export default function Home() {
     return () => supabase.removeChannel(channel);
   }, []);
 
-  const calculatePayout = (wager, line) => {
+  // MATHEMATICALLY CORRECT AMERICAN ODDS CALCULATOR
+  const calculatePayout = (wager, oddsStr) => {
     const amount = parseFloat(wager);
-    if (isNaN(amount) || amount <= 0) return { profit: 0, total: 0 };
-    const odds = (line === 'ML' || !line) ? -110 : parseFloat(line);
-    let profit = odds > 0 ? (amount * odds) / 100 : amount / (Math.abs(odds) / 100);
+    if (isNaN(amount) || amount <= 0) return { profit: "0.00", total: "0.00" };
+    
+    let odds = parseFloat(oddsStr);
+    if (isNaN(odds)) odds = -110; // Failsafe to standard juice
+
+    let profit = 0;
+    if (odds > 0) {
+      profit = (amount * odds) / 100;
+    } else {
+      profit = amount / (Math.abs(odds) / 100);
+    }
     return { profit: profit.toFixed(2), total: (amount + profit).toFixed(2) };
   };
 
@@ -60,14 +69,27 @@ export default function Home() {
     return num > 0 ? `+${num}` : num;
   };
 
+  const formatOdds = (odds) => {
+    if (!odds || odds === '—') return '-110';
+    const num = parseFloat(odds);
+    if (isNaN(num)) return odds;
+    return num > 0 ? `+${num}` : num;
+  };
+
   const handlePlaceBet = async () => {
     if (!betAmount || !selectedBet || !user) return;
     setIsSubmitting(true);
     try {
       const wager = parseFloat(betAmount);
+      
+      // Save exactly what they bet on (e.g. "+0.5 (-110)" or "ML (+150)")
+      const lineToSave = selectedBet.type === 'moneyline' 
+        ? formatOdds(selectedBet.odds) 
+        : `${selectedBet.value} (${formatOdds(selectedBet.odds)})`;
+
       await supabase.from('bets').insert([{
         user_id: user.id, game_id: selectedBet.game.id, selection: selectedBet.selection,
-        bet_type: selectedBet.type, line_at_bet: selectedBet.line, wager_amount: wager, status: 'pending'
+        bet_type: selectedBet.type, line_at_bet: lineToSave, wager_amount: wager, status: 'pending'
       }]);
       
       if (wager >= 50) {
@@ -91,7 +113,6 @@ export default function Home() {
       {/* BRANDED NAV BAR */}
       <nav className="bg-[#0b0f19] p-4 border-b-2 border-brand-violet sticky top-0 z-40 shadow-xl">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          
           <div className="flex items-center gap-4">
             <a href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <img src="/icon.png" alt="Action League" className="w-10 h-10 object-contain" />
@@ -124,9 +145,19 @@ export default function Home() {
           
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
             {games.map(game => {
+              // DATA PARSING (Lines)
               const totalVal = game.total_points ?? game.over_under ?? game.total ?? '—';
               const awaySpread = game.away_spread ?? game.spread ?? 0;
               const homeSpread = game.home_spread ?? (awaySpread ? (parseFloat(awaySpread) * -1) : 0);
+              
+              // DATA PARSING (Odds/Juice)
+              const awaySpreadOdds = game.away_spread_odds ?? -110;
+              const homeSpreadOdds = game.home_spread_odds ?? -110;
+              const overOdds = game.over_odds ?? -110;
+              const underOdds = game.under_odds ?? -110;
+              const awayMl = game.away_moneyline ?? game.away_ml ?? '—';
+              const homeMl = game.home_moneyline ?? game.home_ml ?? '—';
+
               const kickoffDate = new Date(game.kickoff);
 
               return (
@@ -143,50 +174,68 @@ export default function Home() {
                   </div>
 
                   <div className="p-4 md:p-6">
-                    {/* FULL TEAM NAMES (Centered Header) */}
                     <div className="text-center mb-5 pb-4 border-b border-gray-100">
                       <h3 className="font-black text-lg md:text-xl text-brand-dark uppercase tracking-tight">
                         {game.away_team} <span className="text-gray-300 font-medium mx-2 italic">@</span> {game.home_team}
                       </h3>
                     </div>
 
-                    {/* PERFECTLY ALIGNED GRID */}
-                    <div className="grid grid-cols-[50px_1fr_1fr_1fr] md:grid-cols-[60px_1fr_1fr_1fr] gap-2 md:gap-3 mb-2 text-[9px] font-black text-gray-400 uppercase tracking-widest text-center items-end pb-1">
-                      <div></div> {/* Empty space for abbreviations */}
+                    <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-2 md:gap-3 mb-2 text-[9px] font-black text-gray-400 uppercase tracking-widest text-center items-end pb-1">
+                      <div className="text-left pl-2">Matchup</div>
                       <div>Spread</div>
                       <div>Moneyline</div>
                       <div>Total</div>
                     </div>
 
                     {/* AWAY ROW */}
-                    <div className="grid grid-cols-[50px_1fr_1fr_1fr] md:grid-cols-[60px_1fr_1fr_1fr] gap-2 md:gap-3 items-center mb-3">
-                      <div className="font-black text-brand-dark text-xs md:text-sm text-center">{game.away_abbr}</div>
+                    <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-2 md:gap-3 items-center mb-3">
+                      <div className="flex flex-col border-l-4 border-gray-300 pl-2">
+                        <span className="font-black text-sm md:text-base text-brand-dark uppercase leading-tight truncate">{game.away_team}</span>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">{game.away_abbr}</span>
+                      </div>
                       
-                      <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'spread', line: awaySpread })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-3 rounded-xl transition-all border border-gray-200 font-black text-sm text-center shadow-sm">
-                        {formatLine(awaySpread)}
+                      <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'spread', value: awaySpread, odds: awaySpreadOdds })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
+                        <span className="font-black text-sm md:text-base leading-none mb-1">{formatLine(awaySpread)}</span>
+                        <span className="text-[9px] md:text-[10px] font-bold text-gray-400 group-hover:text-brand-dark/70 leading-none">{formatOdds(awaySpreadOdds)}</span>
                       </button>
-                      <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'moneyline', line: 'ML' })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-3 rounded-xl transition-all border border-gray-200 font-black text-sm text-center shadow-sm">
-                        ML
+                      
+                      <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'moneyline', value: 'ML', odds: awayMl })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
+                        <span className="font-black text-sm md:text-base leading-none mb-1">{awayMl !== '—' ? formatOdds(awayMl) : 'ML'}</span>
+                        <span className="text-[9px] md:text-[10px] font-bold text-gray-400 group-hover:text-brand-dark/70 leading-none">{awayMl !== '—' ? 'ML' : 'Pick Em'}</span>
                       </button>
-                      <button onClick={() => setSelectedBet({ game, selection: 'OVER', type: 'total', line: totalVal })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 font-black text-sm text-center flex flex-col items-center justify-center shadow-sm">
-                        <span className="text-[8px] uppercase text-gray-500 leading-none mb-1 font-bold">Over</span>
-                        <span className="leading-none">{totalVal}</span>
+                      
+                      <button onClick={() => setSelectedBet({ game, selection: 'OVER', type: 'total', value: totalVal, odds: overOdds })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
+                        <div className="flex items-center gap-1 mb-1">
+                          <span className="text-[8px] md:text-[9px] uppercase text-gray-400 font-bold group-hover:text-brand-dark/70 leading-none">O</span>
+                          <span className="font-black text-sm md:text-base leading-none">{totalVal}</span>
+                        </div>
+                        <span className="text-[9px] md:text-[10px] font-bold text-gray-400 group-hover:text-brand-dark/70 leading-none">{formatOdds(overOdds)}</span>
                       </button>
                     </div>
 
                     {/* HOME ROW */}
-                    <div className="grid grid-cols-[50px_1fr_1fr_1fr] md:grid-cols-[60px_1fr_1fr_1fr] gap-2 md:gap-3 items-center">
-                      <div className="font-black text-brand-violet text-xs md:text-sm text-center">{game.home_abbr}</div>
+                    <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-2 md:gap-3 items-center">
+                      <div className="flex flex-col border-l-4 border-brand-violet pl-2">
+                        <span className="font-black text-sm md:text-base text-brand-dark uppercase leading-tight truncate">{game.home_team}</span>
+                        <span className="text-[10px] font-bold text-brand-violet uppercase">{game.home_abbr}</span>
+                      </div>
                       
-                      <button onClick={() => setSelectedBet({ game, selection: game.home_abbr, type: 'spread', line: homeSpread })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-3 rounded-xl transition-all border border-gray-200 font-black text-sm text-center shadow-sm">
-                        {formatLine(homeSpread)}
+                      <button onClick={() => setSelectedBet({ game, selection: game.home_abbr, type: 'spread', value: homeSpread, odds: homeSpreadOdds })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
+                        <span className="font-black text-sm md:text-base leading-none mb-1">{formatLine(homeSpread)}</span>
+                        <span className="text-[9px] md:text-[10px] font-bold text-gray-400 group-hover:text-brand-dark/70 leading-none">{formatOdds(homeSpreadOdds)}</span>
                       </button>
-                      <button onClick={() => setSelectedBet({ game, selection: game.home_abbr, type: 'moneyline', line: 'ML' })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-3 rounded-xl transition-all border border-gray-200 font-black text-sm text-center shadow-sm">
-                        ML
+                      
+                      <button onClick={() => setSelectedBet({ game, selection: game.home_abbr, type: 'moneyline', value: 'ML', odds: homeMl })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
+                        <span className="font-black text-sm md:text-base leading-none mb-1">{homeMl !== '—' ? formatOdds(homeMl) : 'ML'}</span>
+                        <span className="text-[9px] md:text-[10px] font-bold text-gray-400 group-hover:text-brand-dark/70 leading-none">{homeMl !== '—' ? 'ML' : 'Pick Em'}</span>
                       </button>
-                      <button onClick={() => setSelectedBet({ game, selection: 'UNDER', type: 'total', line: totalVal })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 font-black text-sm text-center flex flex-col items-center justify-center shadow-sm">
-                        <span className="text-[8px] uppercase text-gray-500 leading-none mb-1 font-bold">Under</span>
-                        <span className="leading-none">{totalVal}</span>
+                      
+                      <button onClick={() => setSelectedBet({ game, selection: 'UNDER', type: 'total', value: totalVal, odds: underOdds })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
+                        <div className="flex items-center gap-1 mb-1">
+                          <span className="text-[8px] md:text-[9px] uppercase text-gray-400 font-bold group-hover:text-brand-dark/70 leading-none">U</span>
+                          <span className="font-black text-sm md:text-base leading-none">{totalVal}</span>
+                        </div>
+                        <span className="text-[9px] md:text-[10px] font-bold text-gray-400 group-hover:text-brand-dark/70 leading-none">{formatOdds(underOdds)}</span>
                       </button>
                     </div>
 
@@ -197,7 +246,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* SIDEBAR (Kept Dark for Contrast) */}
+        {/* SIDEBAR */}
         <div className="space-y-6">
            <div className="bg-[#0b0f19] rounded-2xl p-6 text-white shadow-xl border-t-4 border-brand-volt">
               <h3 className="font-black italic uppercase tracking-tighter text-xl mb-4 text-brand-volt">League Intel</h3>
@@ -233,10 +282,18 @@ export default function Home() {
           <div className="bg-white border border-gray-200 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
             <div className="bg-[#0b0f19] p-6 text-white border-b-4 border-brand-violet">
               <p className="text-brand-volt font-black uppercase tracking-widest text-[10px] mb-2">Review Ticket</p>
-              <h2 className="text-2xl font-black uppercase italic tracking-tighter">
-                {selectedBet.selection} {selectedBet.type !== 'moneyline' ? formatLine(selectedBet.line) : 'ML'}
-              </h2>
-              <p className="text-gray-400 text-xs font-bold mt-1 uppercase">{selectedBet.game.away_abbr} @ {selectedBet.game.home_abbr}</p>
+              
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-2xl font-black uppercase italic tracking-tighter">
+                    {selectedBet.selection} {selectedBet.type !== 'moneyline' ? formatLine(selectedBet.value) : ''}
+                  </h2>
+                  <p className="text-gray-400 text-xs font-bold mt-1 uppercase">{selectedBet.game.away_abbr} @ {selectedBet.game.home_abbr}</p>
+                </div>
+                <div className="bg-[#1e293b] text-brand-volt px-3 py-1.5 rounded-lg font-black text-lg border border-gray-700">
+                  {formatOdds(selectedBet.odds)}
+                </div>
+              </div>
             </div>
             
             <div className="p-8">
@@ -247,11 +304,11 @@ export default function Home() {
                 <div className="bg-slate-50 p-5 rounded-xl border border-gray-200">
                   <div className="flex justify-between mb-2">
                     <span className="text-[11px] font-black text-gray-500 uppercase">To Win (Profit)</span>
-                    <span className="text-sm font-black text-green-600">+${calculatePayout(betAmount, selectedBet.line).profit}</span>
+                    <span className="text-sm font-black text-green-600">+${calculatePayout(betAmount, selectedBet.odds).profit}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[11px] font-black text-gray-500 uppercase">Total Payout</span>
-                    <span className="text-sm font-black text-brand-dark">${calculatePayout(betAmount, selectedBet.line).total}</span>
+                    <span className="text-sm font-black text-brand-dark">${calculatePayout(betAmount, selectedBet.odds).total}</span>
                   </div>
                 </div>
               )}
