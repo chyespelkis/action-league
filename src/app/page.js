@@ -25,19 +25,13 @@ export default function Home() {
         const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
         setProfile(prof);
       }
-
-      // 1. Fetch Games - Checking multiple column names for safety
       const { data: g } = await supabase.from('games').select('*').eq('status', 'pending').order('kickoff', { ascending: true });
       setGames(g || []);
-
-      // 2. Fetch Real Stats
       const { data: bets } = await supabase.from('bets').select('wager_amount').eq('status', 'pending');
-      if (bets) {
+      if (bets && bets.length > 0) {
         const top = Math.max(...bets.map(b => b.wager_amount), 0);
         setStats({ topWhale: top, activeBets: bets.length });
       }
-
-      // 3. Fetch Sidebar Messages
       const { data: msgs } = await supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(6);
       setRecentMessages(msgs || []);
     }
@@ -46,7 +40,6 @@ export default function Home() {
     const channel = supabase.channel('sidebar').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (p) => {
       setRecentMessages(prev => [p.new, ...prev].slice(0, 6));
     }).subscribe();
-
     return () => supabase.removeChannel(channel);
   }, []);
 
@@ -59,7 +52,6 @@ export default function Home() {
         user_id: user.id, game_id: selectedBet.game.id, selection: selectedBet.selection,
         bet_type: selectedBet.type, line_at_bet: selectedBet.line, wager_amount: wager, status: 'pending'
       }]);
-
       if (wager >= 50) {
         await supabase.from('messages').insert([{
           user_id: user.id, author_name: 'SYSTEM', content: `${profile.display_name} JUST DROPPED A WHALE BET! 🐋💸`, message_type: 'system_alert'
@@ -67,30 +59,29 @@ export default function Home() {
       }
       setSelectedBet(null);
       setBetAmount("");
-      window.location.reload(); // Refresh stats
-    } catch (err) { alert("Error."); }
+      alert("Bet Placed!");
+      window.location.reload();
+    } catch (err) { alert("Error placing bet."); }
     finally { setIsSubmitting(false); }
   };
 
   return (
     <main className="min-h-screen bg-slate-200">
-      <nav className="bg-brand-dark p-4 border-b-4 border-brand-violet sticky top-0 z-40 shadow-xl">
+      <nav className="bg-brand-dark p-4 border-b-4 border-brand-violet sticky top-0 z-40">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="flex flex-col">
             <h1 className="text-2xl font-black text-brand-volt italic tracking-tighter uppercase leading-none">Action League</h1>
             <a href="/leaderboard" className="text-[10px] font-bold text-brand-violet uppercase">Standings →</a>
           </div>
-          
           <div className="flex gap-4 items-center">
-            {/* FORCE BUTTONS FOR ADMIN EMAIL (Replace with yours) */}
-            {(profile?.role === 'admin' || user?.email === 'chyespelkis@gmail.com') && (
+            {profile?.role === 'admin' && (
               <>
                 <a href="/commissioner" className="text-[10px] font-black text-brand-volt uppercase underline decoration-brand-violet underline-offset-4">Front Office</a>
                 <a href="/grade" className="text-[10px] font-black text-brand-volt uppercase underline decoration-brand-violet underline-offset-4">Grade</a>
               </>
             )}
             <a href="/feed" className="text-[10px] font-black text-white uppercase">Action Feed</a>
-            <a href="/my-slips" className="bg-brand-violet text-white px-3 py-1.5 rounded font-black uppercase text-[10px]">My Slips</a>
+            <a href="/my-bets" className="bg-brand-violet text-white px-3 py-1.5 rounded font-black uppercase text-[10px]">My Slips</a>
             <button onClick={() => supabase.auth.signOut().then(() => window.location.reload())} className="text-[9px] text-gray-500 font-bold uppercase border-l border-gray-800 pl-4">Sign Out</button>
           </div>
         </div>
@@ -100,13 +91,11 @@ export default function Home() {
         <div className="lg:col-span-3 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {games.map(game => {
-              // Safety fallback for column names
-              const total = game.over_under || game.total || '—';
-              const spread = game.away_spread || game.spread || 0;
-              
+              const totalVal = game.over_under || game.total || game.over_under_line || '—';
+              const spreadVal = game.away_spread || game.spread || 0;
               return (
-                <div key={game.id} className="bg-white rounded-3xl shadow-xl overflow-hidden border-2 border-white">
-                  <div className="bg-slate-50 p-4 border-b flex justify-between">
+                <div key={game.id} className="bg-white rounded-3xl shadow-xl border-2 border-white overflow-hidden">
+                  <div className="bg-slate-50 p-3 border-b flex justify-between px-4">
                     <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{new Date(game.kickoff).toLocaleDateString()}</span>
                     <span className="text-[10px] font-black text-brand-violet uppercase">UFL Week {game.week_number}</span>
                   </div>
@@ -117,17 +106,17 @@ export default function Home() {
                       <div className="text-center w-5/12"><h3 className="font-black text-2xl text-brand-dark uppercase tracking-tighter">{game.home_team}</h3></div>
                     </div>
                     <div className="grid grid-cols-3 gap-3">
-                      <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'spread', line: spread })} className="bg-slate-50 p-4 rounded-2xl hover:bg-brand-volt transition-all border border-gray-100 flex flex-col items-center">
+                      <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'spread', line: spreadVal })} className="bg-slate-50 p-4 rounded-2xl hover:bg-brand-volt transition-all border border-gray-100 flex flex-col items-center">
                         <span className="text-[9px] font-black text-gray-400 uppercase mb-1">Spread</span>
-                        <span className="font-black text-sm">{spread > 0 ? `+${spread}` : spread}</span>
+                        <span className="font-black text-sm">{spreadVal > 0 ? `+${spreadVal}` : spreadVal}</span>
                       </button>
                       <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'moneyline', line: 'ML' })} className="bg-slate-50 p-4 rounded-2xl hover:bg-brand-volt transition-all border border-gray-100 flex flex-col items-center">
                         <span className="text-[9px] font-black text-gray-400 uppercase mb-1">ML</span>
                         <span className="font-black text-sm">Pick Em</span>
                       </button>
-                      <button onClick={() => setSelectedBet({ game, selection: 'OVER', type: 'total', line: total })} className="bg-slate-50 p-4 rounded-2xl hover:bg-brand-volt transition-all border border-gray-100 flex flex-col items-center">
+                      <button onClick={() => setSelectedBet({ game, selection: 'OVER', type: 'total', line: totalVal })} className="bg-slate-50 p-4 rounded-2xl hover:bg-brand-volt transition-all border border-gray-100 flex flex-col items-center">
                         <span className="text-[9px] font-black text-gray-400 uppercase mb-1">Total</span>
-                        <span className="font-black text-sm">{total}</span>
+                        <span className="font-black text-sm">{totalVal}</span>
                       </button>
                     </div>
                   </div>
@@ -152,12 +141,12 @@ export default function Home() {
               </div>
            </div>
 
-           <div className="bg-white rounded-3xl p-5 shadow-xl border border-gray-100 h-[450px] flex flex-col">
+           <div className="bg-white rounded-3xl p-5 shadow-xl border border-gray-100 h-[450px] flex flex-col overflow-hidden">
               <h3 className="font-black uppercase text-[11px] tracking-[0.2em] text-brand-violet mb-4">Locker Room</h3>
-              <div className="flex-grow space-y-3 overflow-y-auto">
+              <div className="flex-grow space-y-3 overflow-y-auto pr-2">
                 {recentMessages.map(m => (
-                  <div key={m.id} className={`p-3 rounded-2xl text-[12px] border ${m.message_type === 'system_alert' ? 'bg-brand-volt/10 border-brand-volt/30 text-brand-dark font-black' : 'bg-slate-50 border-gray-100'}`}>
-                    <span className="block text-[8px] opacity-40 uppercase mb-1">{m.author_name}</span>
+                  <div key={m.id} className={`p-3 rounded-2xl text-[12px] border ${m.message_type === 'system_alert' ? 'bg-brand-volt/10 border-brand-volt/30 text-brand-dark font-black' : 'bg-slate-50 border-gray-100 text-brand-dark'}`}>
+                    <span className="block text-[8px] opacity-40 uppercase mb-1 font-black">{m.author_name}</span>
                     {m.content}
                   </div>
                 ))}
@@ -165,7 +154,30 @@ export default function Home() {
            </div>
         </div>
       </div>
-      {/* ... (Betting Modal remains same) */}
+
+      {selectedBet && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="bg-brand-dark p-6 text-white">
+              <p className="text-brand-volt font-black uppercase tracking-widest text-[10px] mb-2">Review Ticket</p>
+              <h2 className="text-2xl font-black uppercase italic tracking-tighter">
+                {selectedBet.selection} {selectedBet.type !== 'moneyline' ? selectedBet.line : 'ML'}
+              </h2>
+              <p className="text-gray-400 text-xs font-bold mt-1 uppercase">{selectedBet.game.away_abbr} @ {selectedBet.game.home_abbr}</p>
+            </div>
+            <div className="p-8">
+              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Wager Amount ($)</label>
+              <input type="number" autoFocus value={betAmount} onChange={(e) => setBetAmount(e.target.value)} placeholder="0.00" className="w-full text-4xl font-black border-b-4 border-gray-100 focus:border-brand-violet outline-none pb-2 text-brand-dark" />
+              <div className="flex gap-4 mt-8">
+                <button onClick={() => setSelectedBet(null)} className="w-1/3 text-gray-400 font-black uppercase text-xs">Cancel</button>
+                <button onClick={handlePlaceBet} disabled={isSubmitting} className="w-2/3 bg-brand-dark text-brand-volt py-4 rounded-xl font-black uppercase tracking-widest hover:bg-brand-panel transition-all shadow-lg active:scale-95 disabled:opacity-50">
+                  {isSubmitting ? 'Locking...' : 'Lock It In'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
