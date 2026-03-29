@@ -202,6 +202,8 @@ export default function Home() {
                       <span className="text-gray-600">|</span>
                     </>
                   )}
+                  <a href="/feed" className="text-[10px] text-brand-volt hover:text-white font-bold uppercase tracking-wider transition-colors drop-shadow-[0_0_5px_rgba(57,255,20,0.8)]">Action Feed</a>
+                  <span className="text-gray-600">|</span>
                   <a href="/my-bets" className="text-[10px] text-brand-violet hover:text-white font-bold uppercase tracking-wider transition-colors">My Slips</a>
                   <span className="text-gray-600">|</span>
                   <button onClick={handleSignOut} className="text-[10px] text-red-500 hover:text-red-400 font-bold uppercase tracking-wider transition-colors">Sign Out</button>
