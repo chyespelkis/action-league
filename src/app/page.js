@@ -45,13 +45,12 @@ export default function Home() {
     return () => supabase.removeChannel(channel);
   }, []);
 
-  // MATHEMATICALLY CORRECT AMERICAN ODDS CALCULATOR
   const calculatePayout = (wager, oddsStr) => {
     const amount = parseFloat(wager);
     if (isNaN(amount) || amount <= 0) return { profit: "0.00", total: "0.00" };
     
     let odds = parseFloat(oddsStr);
-    if (isNaN(odds)) odds = -110; // Failsafe to standard juice
+    if (isNaN(odds)) odds = -110;
 
     let profit = 0;
     if (odds > 0) {
@@ -81,8 +80,6 @@ export default function Home() {
     setIsSubmitting(true);
     try {
       const wager = parseFloat(betAmount);
-      
-      // Save exactly what they bet on (e.g. "+0.5 (-110)" or "ML (+150)")
       const lineToSave = selectedBet.type === 'moneyline' 
         ? formatOdds(selectedBet.odds) 
         : `${selectedBet.value} (${formatOdds(selectedBet.odds)})`;
@@ -131,6 +128,10 @@ export default function Home() {
               </>
             )}
             <a href="/feed" className="text-[10px] font-black text-white uppercase hover:text-brand-volt transition-colors">Action Feed</a>
+            
+            {/* THE RETURN OF THE FEEDBACK BUTTON */}
+            <a href="https://forms.gle/P2NK6ceNLFCbekZS8" target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-gray-400 uppercase hover:text-brand-volt transition-colors">Feedback</a>
+            
             <a href="/my-bets" className="bg-brand-violet text-white px-4 py-2 rounded font-black uppercase text-[10px] hover:bg-white hover:text-brand-violet transition-colors shadow-md">My Slips</a>
             <button onClick={() => supabase.auth.signOut().then(() => window.location.reload())} className="text-[9px] text-gray-500 font-bold uppercase border-l border-gray-800 pl-4 hover:text-red-400 transition-colors">Sign Out</button>
           </div>
@@ -145,12 +146,10 @@ export default function Home() {
           
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
             {games.map(game => {
-              // DATA PARSING (Lines)
               const totalVal = game.total_points ?? game.over_under ?? game.total ?? '—';
               const awaySpread = game.away_spread ?? game.spread ?? 0;
               const homeSpread = game.home_spread ?? (awaySpread ? (parseFloat(awaySpread) * -1) : 0);
               
-              // DATA PARSING (Odds/Juice)
               const awaySpreadOdds = game.away_spread_odds ?? -110;
               const homeSpreadOdds = game.home_spread_odds ?? -110;
               const overOdds = game.over_odds ?? -110;
@@ -174,24 +173,29 @@ export default function Home() {
                   </div>
 
                   <div className="p-4 md:p-6">
-                    <div className="text-center mb-5 pb-4 border-b border-gray-100">
-                      <h3 className="font-black text-lg md:text-xl text-brand-dark uppercase tracking-tight">
-                        {game.away_team} <span className="text-gray-300 font-medium mx-2 italic">@</span> {game.home_team}
+                    {/* FIXED: No wrap on team names, perfectly centered */}
+                    <div className="text-center mb-5 pb-4 border-b border-gray-100 flex flex-wrap justify-center items-center gap-2">
+                      <h3 className="font-black text-lg md:text-xl text-brand-dark uppercase tracking-tight whitespace-nowrap">
+                        {game.away_team}
+                      </h3>
+                      <span className="text-gray-300 font-medium italic mx-1">@</span>
+                      <h3 className="font-black text-lg md:text-xl text-brand-dark uppercase tracking-tight whitespace-nowrap">
+                        {game.home_team}
                       </h3>
                     </div>
 
-                    <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-2 md:gap-3 mb-2 text-[9px] font-black text-gray-400 uppercase tracking-widest text-center items-end pb-1">
-                      <div className="text-left pl-2">Matchup</div>
+                    {/* FIXED: Reclaimed space for buttons (60px for abbreviation, the rest for buttons) */}
+                    <div className="grid grid-cols-[50px_1fr_1fr_1fr] md:grid-cols-[70px_1fr_1fr_1fr] gap-2 md:gap-3 mb-2 text-[9px] font-black text-gray-400 uppercase tracking-widest text-center items-end pb-1">
+                      <div className="text-left pl-2">Team</div>
                       <div>Spread</div>
                       <div>Moneyline</div>
                       <div>Total</div>
                     </div>
 
                     {/* AWAY ROW */}
-                    <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-2 md:gap-3 items-center mb-3">
-                      <div className="flex flex-col border-l-4 border-gray-300 pl-2">
-                        <span className="font-black text-sm md:text-base text-brand-dark uppercase leading-tight truncate">{game.away_team}</span>
-                        <span className="text-[10px] font-bold text-gray-400 uppercase">{game.away_abbr}</span>
+                    <div className="grid grid-cols-[50px_1fr_1fr_1fr] md:grid-cols-[70px_1fr_1fr_1fr] gap-2 md:gap-3 items-center mb-3">
+                      <div className="border-l-4 border-gray-300 pl-2">
+                        <span className="font-black text-sm md:text-lg text-brand-dark uppercase">{game.away_abbr}</span>
                       </div>
                       
                       <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'spread', value: awaySpread, odds: awaySpreadOdds })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
@@ -214,10 +218,9 @@ export default function Home() {
                     </div>
 
                     {/* HOME ROW */}
-                    <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-2 md:gap-3 items-center">
-                      <div className="flex flex-col border-l-4 border-brand-violet pl-2">
-                        <span className="font-black text-sm md:text-base text-brand-dark uppercase leading-tight truncate">{game.home_team}</span>
-                        <span className="text-[10px] font-bold text-brand-violet uppercase">{game.home_abbr}</span>
+                    <div className="grid grid-cols-[50px_1fr_1fr_1fr] md:grid-cols-[70px_1fr_1fr_1fr] gap-2 md:gap-3 items-center">
+                      <div className="border-l-4 border-brand-violet pl-2">
+                        <span className="font-black text-sm md:text-lg text-brand-violet uppercase">{game.home_abbr}</span>
                       </div>
                       
                       <button onClick={() => setSelectedBet({ game, selection: game.home_abbr, type: 'spread', value: homeSpread, odds: homeSpreadOdds })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
