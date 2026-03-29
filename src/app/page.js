@@ -147,7 +147,7 @@ export default function Home() {
   const availableAction = WEEKLY_BUDGET - budgetUsed;
 
   return (
-    <main className="min-h-screen bg-gray-100 p-4 md:p-8 relative">
+    <main className="min-h-screen bg-slate-200 p-4 md:p-8 relative">
       
       {showSplash && (
         <div className={`fixed inset-0 z-[100] flex flex-col items-center justify-center bg-brand-dark bg-[url('/stars.png')] bg-cover bg-center bg-no-repeat ${fadeSplash ? 'animate-fade-out' : ''}`}>
