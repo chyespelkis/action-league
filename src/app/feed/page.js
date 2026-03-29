@@ -17,8 +17,8 @@ export default function ActionFeed() {
         .from('bets')
         .select(`
           *,
-          games (*),
-          profiles (display_name)
+          games!fk_bets_games (*),
+          profiles!fk_bets_profiles (display_name)
         `)
         .order('created_at', { ascending: false });
 
