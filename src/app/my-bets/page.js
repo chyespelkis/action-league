@@ -48,7 +48,7 @@ export default function MyBets() {
   if (loading) return <main className="p-8 text-center font-black uppercase italic text-gray-700">Loading Slips...</main>;
 
   return (
-    <main className="min-h-screen bg-gray-100 p-4 md:p-8">
+    <main className="min-h-screen bg-slate-200 p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-end mb-8 border-b-4 border-brand-violet pb-4">
           <h1 className="text-3xl font-black uppercase italic tracking-tighter text-brand-dark">My Bet Slips</h1>
