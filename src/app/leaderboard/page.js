@@ -15,17 +15,14 @@ export default function Leaderboard() {
   const [selectedView, setSelectedView] = useState('Dashboard'); 
   const [loading, setLoading] = useState(true);
   
-  // State for the Navigation Bar
+  // Nav Bar State
   const [user, setUser] = useState(null);
   const [currentUserProfile, setCurrentUserProfile] = useState(null);
   const [balance, setBalance] = useState(0);
-  
-  // Dynamically calculated instead of hardcoded
-  const [currentWeek, setCurrentWeek] = useState(1); 
-  const STARTING_BUDGET = 100;
 
   useEffect(() => {
     async function fetchAllData() {
+      // 1. Get current user for Nav
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setUser(session.user);
@@ -36,83 +33,65 @@ export default function Leaderboard() {
         }
       }
 
-      // 1. Fetch ALL weeks from the games table to ensure toggles always appear
+      // 2. Fetch Weeks from Games
       const { data: allGames } = await supabase.from('games').select('week_number');
       if (allGames) {
          const weeks = [...new Set(allGames.map(g => g.week_number).filter(Boolean))].sort((a, b) => a - b);
          setAvailableWeeks(weeks);
-         if (weeks.length > 0) setCurrentWeek(Math.max(...weeks));
       }
 
-      // 2. Fetch Leaderboard Data
+      // 3. Fetch Leaderboard Data
       const { data: walletsData } = await supabase.from('weekly_wallets').select('*');
       const { data: profilesData } = await supabase.from('profiles').select('*');
 
       if (walletsData) setAllWallets(walletsData);
       if (profilesData) setProfiles(profilesData);
+      
       setLoading(false);
     }
     fetchAllData();
   }, []);
 
+  // --- THE NEW BANKROLL LOGIC ---
   useEffect(() => {
-    if (!allWallets.length) return;
+    if (!profiles.length) return;
     let processedStandings = [];
 
     if (selectedView === 'Dashboard') {
-      // The Macro View: Track Overall AND Current Week together
-      const userTotals = {};
-      allWallets.forEach(wallet => {
-        if (!userTotals[wallet.user_id]) {
-          userTotals[wallet.user_id] = { overall_winnings: 0, current_week_winnings: 0 };
-        }
-        const profit = wallet.balance - STARTING_BUDGET;
-        userTotals[wallet.user_id].overall_winnings += profit;
-        
-        if (wallet.week_number === currentWeek) {
-          userTotals[wallet.user_id].current_week_winnings += profit;
-        }
-      });
-
-      processedStandings = Object.keys(userTotals).map(userId => {
-        const profile = profiles?.find(p => p.id === userId);
-        return {
-          user_id: userId,
-          display_name: profile ? profile.display_name : 'Unknown Player',
-          overall_winnings: userTotals[userId].overall_winnings,
-          current_week_winnings: userTotals[userId].current_week_winnings
-        };
-      });
-      
-      // Sort Dashboard by Overall Winnings
-      processedStandings.sort((a, b) => b.overall_winnings - a.overall_winnings);
-
+      // Dashboard uses their LIVE current wallet balance
+      processedStandings = profiles.map(p => ({
+        user_id: p.id,
+        display_name: p.display_name,
+        bankroll: p.balance || 0
+      }));
     } else {
-      // The Specific Week View
-      const weekWallets = allWallets.filter(w => w.week_number === parseInt(selectedView));
-      processedStandings = weekWallets.map(wallet => {
-        const profile = profiles?.find(p => p.id === wallet.user_id);
+      // Specific week uses the snapshot saved by the Commissioner
+      const weekNum = parseInt(selectedView);
+      const weekWallets = allWallets.filter(w => w.week_number === weekNum);
+
+      processedStandings = profiles.map(p => {
+        const snapshot = weekWallets.find(w => w.user_id === p.id);
         return {
-          user_id: wallet.user_id,
-          display_name: profile ? profile.display_name : 'Unknown Player',
-          overall_winnings: wallet.balance - STARTING_BUDGET, // Reusing this key for the sort
+          user_id: p.id,
+          display_name: p.display_name,
+          bankroll: snapshot ? snapshot.balance : (p.balance || 0)
         };
       });
-      // Sort Specific Week by that week's winnings
-      processedStandings.sort((a, b) => b.overall_winnings - a.overall_winnings);
     }
 
+    // Sort strictly by who has the most money
+    processedStandings.sort((a, b) => b.bankroll - a.bankroll);
     setStandings(processedStandings);
-  }, [selectedView, allWallets, profiles, currentWeek]);
+  }, [selectedView, allWallets, profiles]);
 
   const isCommissioner = currentUserProfile?.role === 'admin' || currentUserProfile?.display_name?.toUpperCase() === 'CJYES';
 
-  if (loading) return <main className="min-h-screen bg-slate-200 p-8 text-center font-black uppercase italic text-brand-dark">Calculating Standings...</main>;
+  if (loading) return <main className="min-h-screen bg-slate-200 p-8 text-center font-black uppercase italic text-brand-dark mt-20 text-xl tracking-widest">Calculating Bankrolls...</main>;
 
   return (
     <main className="min-h-screen bg-slate-200 text-brand-dark font-sans pb-12">
       
-      {/* BRANDED NAV BAR (Matched to homepage) */}
+      {/* BRANDED NAV BAR */}
       <nav className="bg-[#0b0f19] p-4 border-b-2 border-brand-violet sticky top-0 z-40 shadow-xl">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-4">
@@ -151,7 +130,6 @@ export default function Leaderboard() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 border-b-2 border-gray-300 pb-4 gap-4">
           <h1 className="text-3xl font-black uppercase italic tracking-tighter text-brand-dark">League Standings</h1>
           
-          {/* STYLED WEEK SELECTOR UI */}
           <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
             <button 
               onClick={() => setSelectedView('Dashboard')} 
@@ -161,7 +139,7 @@ export default function Leaderboard() {
                 : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-violet hover:text-brand-violet'
               }`}
             >
-              Dashboard
+              Live Board
             </button>
             
             {availableWeeks.map(week => (
@@ -186,11 +164,8 @@ export default function Leaderboard() {
           <div className="bg-[#0b0f19] text-white p-4 flex justify-between items-center font-black uppercase tracking-widest text-[10px] md:text-xs border-b-4 border-brand-violet">
             <span className="w-8 md:w-12 text-center text-gray-400">Rnk</span>
             <span className="flex-1 pl-2">Player</span>
-            {selectedView === 'Dashboard' && (
-              <span className="w-24 text-right text-brand-violet hidden sm:block">Wk {currentWeek} Net</span>
-            )}
-            <span className="w-24 md:w-32 text-right text-brand-volt">
-              {selectedView === 'Dashboard' ? 'Total Net' : 'Net Winnings'}
+            <span className="w-32 text-right text-brand-volt">
+              {selectedView === 'Dashboard' ? 'Total Bankroll' : `Week ${selectedView} Bankroll`}
             </span>
           </div>
           
@@ -198,37 +173,29 @@ export default function Leaderboard() {
             {standings.length === 0 ? (
               <p className="p-8 text-center text-gray-400 font-bold uppercase italic">No scores recorded yet.</p>
             ) : (
-              standings.map((row, index) => (
-                <div key={index} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors">
-                  <div className="w-8 md:w-12 text-center font-black text-lg md:text-xl text-gray-400">
-                    {index === 0 ? <span className="text-brand-volt drop-shadow-sm text-2xl">🏆</span> : index + 1}
-                  </div>
-                  
-                  <div className="flex-1 pl-2 font-black text-brand-dark uppercase tracking-tighter text-sm md:text-lg truncate">
-                    {row.display_name}
-                  </div>
-                  
-                  {/* Current Week Net (Only shows on Dashboard) */}
-                  {selectedView === 'Dashboard' && (
-                    <div className={`w-24 text-right hidden sm:block text-sm md:text-base font-bold ${
-                      row.current_week_winnings > 0 ? 'text-green-600' : 
-                      row.current_week_winnings < 0 ? 'text-red-500' : 
-                      'text-gray-400'
-                    }`}>
-                      {row.current_week_winnings > 0 ? '+' : ''}{row.current_week_winnings < 0 ? '-' : ''}${Math.abs(row.current_week_winnings).toFixed(2)}
+              standings.map((row, index) => {
+                // Color coding: Green if above $100, Red if below $100, Gray if broke even
+                let colorClass = 'text-gray-600';
+                if (row.bankroll > 100) colorClass = 'text-green-600';
+                else if (row.bankroll < 100) colorClass = 'text-red-500';
+
+                return (
+                  <div key={index} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors">
+                    <div className="w-8 md:w-12 text-center font-black text-lg md:text-xl text-gray-400">
+                      {index === 0 ? <span className="text-brand-volt drop-shadow-sm text-2xl">🏆</span> : index + 1}
                     </div>
-                  )}
-                  
-                  {/* The Main Sort Column */}
-                  <div className={`w-24 md:w-32 text-right text-lg md:text-xl font-black ${
-                    row.overall_winnings > 0 ? 'text-green-600' : 
-                    row.overall_winnings < 0 ? 'text-red-500' : 
-                    'text-gray-900'
-                  }`}>
-                    {row.overall_winnings > 0 ? '+' : ''}{row.overall_winnings < 0 ? '-' : ''}${Math.abs(row.overall_winnings).toFixed(2)}
+                    
+                    <div className="flex-1 pl-2 font-black text-brand-dark uppercase tracking-tighter text-sm md:text-lg truncate">
+                      {row.display_name}
+                    </div>
+                    
+                    {/* The Bankroll Score (No minus signs!) */}
+                    <div className={`w-32 text-right text-xl md:text-2xl font-black tracking-tighter ${colorClass}`}>
+                      ${parseFloat(row.bankroll).toFixed(2)}
+                    </div>
                   </div>
-                </div>
-              ))
+                )
+              })
             )}
           </div>
         </div>
