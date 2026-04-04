@@ -102,19 +102,30 @@ export default function Home() {
 
     setIsSubmitting(true);
     try {
-      const lineToSave = selectedBet.type === 'moneyline' 
-        ? formatOdds(selectedBet.odds) 
-        : `${selectedBet.value} (${formatOdds(selectedBet.odds)})`;
+      // FIX: Separate the line and the odds into pure numbers so the DB accepts them
+      const numLine = selectedBet.type === 'moneyline' || selectedBet.value === 'ML' 
+        ? null 
+        : parseFloat(selectedBet.value);
+        
+      const numOdds = parseFloat(selectedBet.odds) || -110;
 
       const { error: insertError } = await supabase.from('bets').insert([{
-        user_id: user.id, game_id: selectedBet.game.id, selection: selectedBet.selection,
-        bet_type: selectedBet.type, line_at_bet: lineToSave, wager_amount: wager, status: 'pending'
+        user_id: user.id, 
+        game_id: selectedBet.game.id, 
+        selection: selectedBet.selection,
+        bet_type: selectedBet.type, 
+        line_at_bet: numLine, // Clean number (e.g., 42.5 or -3.5)
+        odds: numOdds,        // Clean number (e.g., -110)
+        wager_amount: wager, 
+        status: 'pending'
       }]);
 
       if (insertError) throw insertError;
 
+      // Update Wallet
       await supabase.from('profiles').update({ balance: balance - wager }).eq('id', user.id);
 
+      // Whale Alert
       if (wager >= 50) {
         await supabase.from('messages').insert([{
           user_id: user.id, author_name: 'SYSTEM', content: `${profile?.display_name || 'Someone'} JUST DROPPED A WHALE BET! 🐋💸`, message_type: 'system_alert'
@@ -126,7 +137,7 @@ export default function Home() {
       window.location.reload();
     } catch (err) { 
       console.error(err);
-      alert("Error placing bet. Check your database permissions."); 
+      alert(`Error placing bet: ${err.message || 'Database rejected the data format.'}`); 
     }
     finally { setIsSubmitting(false); }
   };
