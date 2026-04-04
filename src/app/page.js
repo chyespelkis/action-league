@@ -8,6 +8,7 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function Home() {
+  // Application State
   const [games, setGames] = useState([]);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -17,36 +18,52 @@ export default function Home() {
   const [recentMessages, setRecentMessages] = useState([]);
   const [stats, setStats] = useState({ topWhale: 0, activeBets: 0 });
   const [balance, setBalance] = useState(0);
+  const [pageLoading, setPageLoading] = useState(true); // Prevents login flashing
   
+  // Week Filtering State
   const [availableWeeks, setAvailableWeeks] = useState([]);
   const [activeWeek, setActiveWeek] = useState(null);
+
+  // Auth State
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authView, setAuthView] = useState("sign_in");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
     async function getInitialData() {
       const { data: { session } } = await supabase.auth.getSession();
+      
       if (session) {
         setUser(session.user);
         const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-        setProfile(prof);
-        setBalance(prof?.balance || 0);
+        if (prof) {
+          setProfile(prof);
+          setBalance(prof.balance || 0);
+        }
+        
+        // Fetch Games
+        const { data: g } = await supabase.from('games').select('*').eq('status', 'pending').order('kickoff', { ascending: true });
+        if (g) {
+          setGames(g);
+          const weeks = [...new Set(g.map(game => game.week_number))].sort((a, b) => a - b);
+          setAvailableWeeks(weeks);
+          if (weeks.length > 0) setActiveWeek(weeks[0]);
+        }
+        
+        // Fetch League Intel
+        const { data: bets } = await supabase.from('bets').select('wager_amount').eq('status', 'pending');
+        if (bets && bets.length > 0) {
+          const top = Math.max(...bets.map(b => b.wager_amount), 0);
+          setStats({ topWhale: top, activeBets: bets.length });
+        }
+        
+        const { data: msgs } = await supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(6);
+        setRecentMessages(msgs || []);
       }
       
-      const { data: g } = await supabase.from('games').select('*').eq('status', 'pending').order('kickoff', { ascending: true });
-      if (g) {
-        setGames(g);
-        const weeks = [...new Set(g.map(game => game.week_number))].sort((a, b) => a - b);
-        setAvailableWeeks(weeks);
-        if (weeks.length > 0) setActiveWeek(weeks[0]);
-      }
-      
-      const { data: bets } = await supabase.from('bets').select('wager_amount').eq('status', 'pending');
-      if (bets && bets.length > 0) {
-        const top = Math.max(...bets.map(b => b.wager_amount), 0);
-        setStats({ topWhale: top, activeBets: bets.length });
-      }
-      
-      const { data: msgs } = await supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(6);
-      setRecentMessages(msgs || []);
+      setPageLoading(false);
     }
     getInitialData();
 
@@ -56,19 +73,43 @@ export default function Home() {
     return () => supabase.removeChannel(channel);
   }, []);
 
+  // --- AUTHENTICATION HANDLER ---
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      if (authView === 'sign_in') {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        window.location.reload();
+      } else {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        alert("Account created successfully! You can now sign in.");
+        setAuthView('sign_in');
+      }
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    window.location.href = '/'; // Forces a hard reset to the login screen
+  };
+
   const calculatePayout = (wager, oddsStr) => {
     const amount = parseFloat(wager);
     if (isNaN(amount) || amount <= 0) return { profit: "0.00", total: "0.00" };
-    
     let odds = parseFloat(oddsStr);
     if (isNaN(odds)) odds = -110;
 
     let profit = 0;
-    if (odds > 0) {
-      profit = (amount * odds) / 100;
-    } else {
-      profit = amount / (Math.abs(odds) / 100);
-    }
+    if (odds > 0) profit = (amount * odds) / 100;
+    else profit = amount / (Math.abs(odds) / 100);
     return { profit: profit.toFixed(2), total: (amount + profit).toFixed(2) };
   };
 
@@ -102,11 +143,9 @@ export default function Home() {
 
     setIsSubmitting(true);
     try {
-      // FIX: Separate the line and the odds into pure numbers so the DB accepts them
       const numLine = selectedBet.type === 'moneyline' || selectedBet.value === 'ML' 
         ? null 
         : parseFloat(selectedBet.value);
-        
       const numOdds = parseFloat(selectedBet.odds) || -110;
 
       const { error: insertError } = await supabase.from('bets').insert([{
@@ -114,8 +153,8 @@ export default function Home() {
         game_id: selectedBet.game.id, 
         selection: selectedBet.selection,
         bet_type: selectedBet.type, 
-        line_at_bet: numLine, // Clean number (e.g., 42.5 or -3.5)
-        odds: numOdds,        // Clean number (e.g., -110)
+        line_at_bet: numLine, 
+        odds: numOdds,        
         wager_amount: wager, 
         status: 'pending'
       }]);
@@ -125,50 +164,100 @@ export default function Home() {
       // Update Wallet
       await supabase.from('profiles').update({ balance: balance - wager }).eq('id', user.id);
 
-      // WHALE ALERT (Randomized)
+      // Whale Alert (Randomized)
       if (wager >= 50) {
         const whaleMessages = [
           `${profile?.display_name || 'Someone'} JUST DROPPED A WHALE BET! 🐋💸`,
           `🚨 ALERT: ${profile?.display_name || 'Someone'} is risking the rent money!`,
-          `High roller in the building! ${profile?.display_name || 'Someone'} just pushed the chips in. 🎰`,
+          `High roller in the building! ${profile?.display_name || 'Someone'} pushed the chips in. 🎰`,
           `🐳 WHALE SIGHTING: ${profile?.display_name || 'Someone'} must know something we don't.`,
           `Heavy action coming in from ${profile?.display_name || 'Someone'}. Fade or follow? 👀`
         ];
-        
-        // Pick a random message from the list
         const randomMsg = whaleMessages[Math.floor(Math.random() * whaleMessages.length)];
 
         await supabase.from('messages').insert([{
-          user_id: user.id, 
-          author_name: 'SYSTEM', 
-          content: randomMsg, 
-          message_type: 'system_alert'
+          user_id: user.id, author_name: 'SYSTEM', content: randomMsg, message_type: 'system_alert'
         }]);
       }
-      
       setSelectedBet(null);
       setBetAmount("");
       alert("✅ TICKET LOCKED IN!");
       window.location.reload();
     } catch (err) { 
       console.error(err);
-      alert(`Error placing bet: ${err.message || 'Database rejected the data format.'}`); 
+      alert(`Error placing bet: ${err.message || 'Database rejected the format.'}`); 
     }
     finally { setIsSubmitting(false); }
   };
 
   const isCommissioner = profile?.role === 'admin' || profile?.display_name?.toUpperCase() === 'CJYES';
   
-  // FIX: Filter out games that have already kicked off
   const displayedGames = games.filter(g => {
     const isCurrentWeek = g.week_number === activeWeek;
     const hasNotStarted = new Date(g.kickoff) > new Date();
     return isCurrentWeek && hasNotStarted;
   });
 
+  // --- LOADING SCREEN ---
+  if (pageLoading) {
+    return <main className="min-h-screen bg-slate-200 flex items-center justify-center font-black uppercase tracking-widest text-brand-dark text-xl">Opening The Book...</main>;
+  }
+
+  // --- THE LOCKER ROOM LOGIN SCREEN ---
+  if (!user) {
+    return (
+      <main className="min-h-screen bg-slate-200 flex flex-col items-center justify-center p-4">
+        <div className="mb-8 text-center">
+          <img src="/icon.png" alt="Action League" className="w-20 h-20 mx-auto mb-4 object-contain" />
+          <h1 className="text-4xl font-black text-brand-dark italic uppercase tracking-tighter">Action League</h1>
+          <p className="text-gray-500 font-bold uppercase tracking-widest text-xs mt-2">Players Only.</p>
+        </div>
+        
+        <div className="bg-white p-8 rounded-3xl shadow-2xl border border-gray-200 w-full max-w-md">
+          <div className="flex gap-4 mb-8 border-b-2 border-gray-100 pb-4">
+            <button 
+              onClick={() => { setAuthView('sign_in'); setAuthError(null); }} 
+              className={`flex-1 font-black uppercase tracking-widest text-xs pb-2 transition-colors ${authView === 'sign_in' ? 'text-brand-violet border-b-2 border-brand-violet' : 'text-gray-400 hover:text-gray-600'}`}
+            >
+              Sign In
+            </button>
+            <button 
+              onClick={() => { setAuthView('sign_up'); setAuthError(null); }} 
+              className={`flex-1 font-black uppercase tracking-widest text-xs pb-2 transition-colors ${authView === 'sign_up' ? 'text-brand-violet border-b-2 border-brand-violet' : 'text-gray-400 hover:text-gray-600'}`}
+            >
+              Register
+            </button>
+          </div>
+
+          <form onSubmit={handleAuth} className="space-y-6">
+            {authError && (
+              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-[10px] font-bold uppercase border border-red-200">
+                {authError}
+              </div>
+            )}
+            
+            <div>
+              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Email</label>
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-50 border-2 border-gray-200 rounded-xl px-4 py-3 font-bold text-brand-dark focus:border-brand-violet outline-none transition-colors" placeholder="player@actionleague.com" />
+            </div>
+            
+            <div>
+              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Password</label>
+              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-50 border-2 border-gray-200 rounded-xl px-4 py-3 font-bold text-brand-dark focus:border-brand-violet outline-none transition-colors" placeholder="••••••••" />
+            </div>
+
+            <button type="submit" disabled={authLoading} className="w-full bg-[#0b0f19] text-brand-volt py-4 rounded-xl font-black uppercase tracking-widest hover:bg-brand-dark transition-colors shadow-lg disabled:opacity-50 mt-4">
+              {authLoading ? 'Verifying...' : (authView === 'sign_in' ? 'Enter The Book' : 'Join League')}
+            </button>
+          </form>
+        </div>
+      </main>
+    );
+  }
+
+  // --- MAIN DASHBOARD (Only renders if logged in) ---
   return (
     <main className="min-h-screen bg-slate-200 text-brand-dark font-sans pb-12">
-      
       {/* BRANDED NAV BAR */}
       <nav className="bg-[#0b0f19] p-4 border-b-2 border-brand-violet sticky top-0 z-40 shadow-xl">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
@@ -182,7 +271,6 @@ export default function Home() {
           </div>
 
           <div className="flex gap-4 items-center flex-wrap justify-center">
-            
             {/* WALLET */}
             <div className="bg-[#1e293b] px-4 py-1.5 rounded-lg border border-brand-volt/20 text-right mr-2 shadow-sm">
               <p className="text-[8px] font-black text-gray-500 uppercase leading-none mb-1">Wallet</p>
@@ -199,19 +287,16 @@ export default function Home() {
             <a href="/feed" className="text-[10px] font-black text-white uppercase hover:text-brand-volt transition-colors">Action Feed</a>
             <a href="https://docs.google.com/forms/d/e/1FAIpQLScaec7ad9MQCanDmLrWQ8s6pQ-JnEMZhRvxtTm4tLTuK2eaSg/viewform?usp=header" target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-gray-400 uppercase hover:text-brand-volt transition-colors">Feedback</a>
             <a href="/my-bets" className="bg-brand-violet text-white px-4 py-2 rounded font-black uppercase text-[10px] hover:bg-white hover:text-brand-violet transition-colors shadow-md">My Slips</a>
-            <button onClick={() => supabase.auth.signOut().then(() => window.location.reload())} className="text-[9px] text-gray-500 font-bold uppercase border-l border-gray-800 pl-4 hover:text-red-400 transition-colors">Sign Out</button>
+            <button onClick={handleSignOut} className="text-[9px] text-gray-500 font-bold uppercase border-l border-gray-800 pl-4 hover:text-red-400 transition-colors">Sign Out</button>
           </div>
         </div>
       </nav>
 
       <div className="max-w-7xl mx-auto p-4 md:p-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
-        
         {/* THE BOARD */}
         <div className="lg:col-span-3 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b-2 border-gray-300 pb-2 mb-4">
              <h2 className="text-sm font-black uppercase tracking-[0.2em] text-gray-500">The Board</h2>
-             
-             {/* WEEK SELECTOR UI */}
              {availableWeeks.length > 0 && (
                 <div className="flex gap-2 mt-3 sm:mt-0">
                   {availableWeeks.map(weekNum => (
@@ -248,7 +333,6 @@ export default function Home() {
                 const underOdds = game.under_odds ?? -110;
                 const awayMl = game.away_moneyline ?? game.away_ml ?? '—';
                 const homeMl = game.home_moneyline ?? game.home_ml ?? '—';
-
                 const kickoffDate = new Date(game.kickoff);
 
                 return (
@@ -370,7 +454,6 @@ export default function Home() {
           <div className="bg-white border border-gray-200 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
             <div className="bg-[#0b0f19] p-6 text-white border-b-4 border-brand-violet">
               <p className="text-brand-volt font-black uppercase tracking-widest text-[10px] mb-2">Review Ticket</p>
-              
               <div className="flex justify-between items-start">
                 <div>
                   <h2 className="text-2xl font-black uppercase italic tracking-tighter">

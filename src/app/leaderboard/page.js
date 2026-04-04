@@ -8,7 +8,7 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function Leaderboard() {
-  const [allWallets, setAllWallets] = useState([]);
+  const [bets, setBets] = useState([]);
   const [profiles, setProfiles] = useState([]);
   const [standings, setStandings] = useState([]);
   const [availableWeeks, setAvailableWeeks] = useState([]);
@@ -19,6 +19,18 @@ export default function Leaderboard() {
   const [user, setUser] = useState(null);
   const [currentUserProfile, setCurrentUserProfile] = useState(null);
   const [balance, setBalance] = useState(0);
+
+  // Pure Profit Calculator
+  const calculateProfit = (wager, oddsStr) => {
+    const amount = parseFloat(wager);
+    if (isNaN(amount) || amount <= 0) return 0;
+    
+    let odds = parseFloat(oddsStr);
+    if (isNaN(odds)) odds = -110; // Default Vegas juice
+
+    if (odds > 0) return (amount * odds) / 100;
+    return amount / (Math.abs(odds) / 100);
+  };
 
   useEffect(() => {
     async function fetchAllData() {
@@ -40,53 +52,60 @@ export default function Leaderboard() {
          setAvailableWeeks(weeks);
       }
 
-      // 3. Fetch Leaderboard Data
-      const { data: walletsData } = await supabase.from('weekly_wallets').select('*');
+      // 3. Fetch ALL Profiles and ALL Bets
       const { data: profilesData } = await supabase.from('profiles').select('*');
+      const { data: betsData } = await supabase.from('bets').select(`
+        user_id, wager_amount, odds, status, 
+        games (week_number)
+      `);
 
-      if (walletsData) setAllWallets(walletsData);
       if (profilesData) setProfiles(profilesData);
+      if (betsData) setBets(betsData);
       
       setLoading(false);
     }
     fetchAllData();
   }, []);
 
-  // --- THE NEW BANKROLL LOGIC ---
+  // --- THE NEW GROSS WINNINGS LOGIC ---
   useEffect(() => {
     if (!profiles.length) return;
-    let processedStandings = [];
 
-    if (selectedView === 'Dashboard') {
-      // Dashboard uses their LIVE current wallet balance
-      processedStandings = profiles.map(p => ({
+    let processedStandings = profiles.map(p => {
+      let totalWinnings = 0;
+      
+      // Isolate bets for this specific user
+      const userBets = bets.filter(b => b.user_id === p.id);
+
+      userBets.forEach(bet => {
+        // ONLY tally points if the bet was officially graded as a 'won'
+        if (bet.status === 'won') {
+          const isDashboard = selectedView === 'Dashboard';
+          const isMatchingWeek = bet.games?.week_number === parseInt(selectedView);
+
+          // Tally if we are on the overall dashboard, OR if the bet matches the selected week
+          if (isDashboard || isMatchingWeek) {
+            totalWinnings += calculateProfit(bet.wager_amount, bet.odds);
+          }
+        }
+        // Lost, pending, and pushed bets simply add $0 (ignored)
+      });
+
+      return {
         user_id: p.id,
         display_name: p.display_name,
-        bankroll: p.balance || 0
-      }));
-    } else {
-      // Specific week uses the snapshot saved by the Commissioner
-      const weekNum = parseInt(selectedView);
-      const weekWallets = allWallets.filter(w => w.week_number === weekNum);
+        score: totalWinnings
+      };
+    });
 
-      processedStandings = profiles.map(p => {
-        const snapshot = weekWallets.find(w => w.user_id === p.id);
-        return {
-          user_id: p.id,
-          display_name: p.display_name,
-          bankroll: snapshot ? snapshot.balance : (p.balance || 0)
-        };
-      });
-    }
-
-    // Sort strictly by who has the most money
-    processedStandings.sort((a, b) => b.bankroll - a.bankroll);
+    // Sort strictly by highest score
+    processedStandings.sort((a, b) => b.score - a.score);
     setStandings(processedStandings);
-  }, [selectedView, allWallets, profiles]);
+  }, [selectedView, bets, profiles]);
 
   const isCommissioner = currentUserProfile?.role === 'admin' || currentUserProfile?.display_name?.toUpperCase() === 'CJYES';
 
-  if (loading) return <main className="min-h-screen bg-slate-200 p-8 text-center font-black uppercase italic text-brand-dark mt-20 text-xl tracking-widest">Calculating Bankrolls...</main>;
+  if (loading) return <main className="min-h-screen bg-slate-200 p-8 text-center font-black uppercase italic text-brand-dark mt-20 text-xl tracking-widest">Calculating Scores...</main>;
 
   return (
     <main className="min-h-screen bg-slate-200 text-brand-dark font-sans pb-12">
@@ -139,7 +158,7 @@ export default function Leaderboard() {
                 : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-violet hover:text-brand-violet'
               }`}
             >
-              Live Board
+              Overall Winnings
             </button>
             
             {availableWeeks.map(week => (
@@ -165,7 +184,7 @@ export default function Leaderboard() {
             <span className="w-8 md:w-12 text-center text-gray-400">Rnk</span>
             <span className="flex-1 pl-2">Player</span>
             <span className="w-32 text-right text-brand-volt">
-              {selectedView === 'Dashboard' ? 'Total Bankroll' : `Week ${selectedView} Bankroll`}
+              {selectedView === 'Dashboard' ? 'Total Won' : `Week ${selectedView} Won`}
             </span>
           </div>
           
@@ -174,24 +193,23 @@ export default function Leaderboard() {
               <p className="p-8 text-center text-gray-400 font-bold uppercase italic">No scores recorded yet.</p>
             ) : (
               standings.map((row, index) => {
-                // Color coding: Green if above $100, Red if below $100, Gray if broke even
-                let colorClass = 'text-gray-600';
-                if (row.bankroll > 100) colorClass = 'text-green-600';
-                else if (row.bankroll < 100) colorClass = 'text-red-500';
+                // Formatting: Bright green if they have points, gray if they are sitting at $0
+                const hasPoints = row.score > 0;
+                const scoreColor = hasPoints ? 'text-green-600' : 'text-gray-400';
 
                 return (
                   <div key={index} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors">
                     <div className="w-8 md:w-12 text-center font-black text-lg md:text-xl text-gray-400">
-                      {index === 0 ? <span className="text-brand-volt drop-shadow-sm text-2xl">🏆</span> : index + 1}
+                      {index === 0 && hasPoints ? <span className="text-brand-volt drop-shadow-sm text-2xl">🏆</span> : index + 1}
                     </div>
                     
                     <div className="flex-1 pl-2 font-black text-brand-dark uppercase tracking-tighter text-sm md:text-lg truncate">
                       {row.display_name}
                     </div>
                     
-                    {/* The Bankroll Score (No minus signs!) */}
-                    <div className={`w-32 text-right text-xl md:text-2xl font-black tracking-tighter ${colorClass}`}>
-                      ${parseFloat(row.bankroll).toFixed(2)}
+                    {/* The Clean Winnings Score */}
+                    <div className={`w-32 text-right text-xl md:text-2xl font-black tracking-tighter ${scoreColor}`}>
+                      ${parseFloat(row.score).toFixed(2)}
                     </div>
                   </div>
                 )
