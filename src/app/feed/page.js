@@ -22,7 +22,6 @@ export default function ActionFeed() {
 
   useEffect(() => {
     async function loadFeed() {
-      // 1. Fetch User Data for Nav Bar
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setUser(session.user);
@@ -33,35 +32,21 @@ export default function ActionFeed() {
         }
       }
 
-      // 2. Fetch Feed Data (Using your exact schema keys)
+      // 1. Fetch weeks directly from the games table
+      const { data: allGames } = await supabase.from('games').select('week_number');
+      if (allGames) {
+        const weeks = [...new Set(allGames.map(g => g.week_number).filter(Boolean))].sort((a, b) => b - a);
+        setAvailableWeeks(weeks);
+        if (weeks.length > 0) setSelectedWeek(weeks[0]);
+      }
+
+      // 2. Fetch all action
       const { data, error } = await supabase
         .from('bets')
-        .select(`
-          *,
-          games!fk_bets_games (*),
-          profiles!fk_bets_profiles (display_name)
-        `)
+        .select(`*, games!fk_bets_games (*), profiles!fk_bets_profiles (display_name)`)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error("Supabase Error:", error);
-        alert("Database Error: " + error.message);
-      }
-
-      if (data) {
-        setFeed(data);
-        
-        // Find all unique week numbers
-        const weeks = Array.from(new Set(data.map(b => b.games?.week_number)))
-          .filter(w => w != null)
-          .sort((a, b) => b - a); 
-        
-        setAvailableWeeks(weeks);
-        
-        if (weeks.length > 0) {
-          setSelectedWeek(weeks[0]);
-        }
-      }
+      if (data) setFeed(data);
       setLoading(false);
     }
     loadFeed();

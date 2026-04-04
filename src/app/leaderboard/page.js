@@ -26,7 +26,6 @@ export default function Leaderboard() {
 
   useEffect(() => {
     async function fetchAllData() {
-      // 1. Get current logged-in user for the Nav Bar
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setUser(session.user);
@@ -37,20 +36,19 @@ export default function Leaderboard() {
         }
       }
 
+      // 1. Fetch ALL weeks from the games table to ensure toggles always appear
+      const { data: allGames } = await supabase.from('games').select('week_number');
+      if (allGames) {
+         const weeks = [...new Set(allGames.map(g => g.week_number).filter(Boolean))].sort((a, b) => a - b);
+         setAvailableWeeks(weeks);
+         if (weeks.length > 0) setCurrentWeek(Math.max(...weeks));
+      }
+
       // 2. Fetch Leaderboard Data
       const { data: walletsData } = await supabase.from('weekly_wallets').select('*');
       const { data: profilesData } = await supabase.from('profiles').select('*');
 
-      if (walletsData && walletsData.length > 0) {
-        setAllWallets(walletsData);
-        const weeks = [...new Set(walletsData.map(w => w.week_number))].sort((a, b) => a - b);
-        setAvailableWeeks(weeks);
-        
-        // Auto-detect the current week (highest week number available)
-        if (weeks.length > 0) {
-          setCurrentWeek(Math.max(...weeks));
-        }
-      }
+      if (walletsData) setAllWallets(walletsData);
       if (profilesData) setProfiles(profilesData);
       setLoading(false);
     }

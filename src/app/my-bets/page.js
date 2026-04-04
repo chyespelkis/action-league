@@ -16,24 +16,20 @@ export default function MyBets() {
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session?.user) {
+        // 1. Fetch weeks directly from the games table so they always appear
+        const { data: allGames } = await supabase.from('games').select('week_number');
+        if (allGames) {
+          const weeks = [...new Set(allGames.map(g => g.week_number).filter(Boolean))].sort((a, b) => b - a);
+          setAvailableWeeks(weeks);
+          if (weeks.length > 0) setActiveWeek(weeks[0]); // Default to highest week
+        }
+
+        // 2. Fetch the user's specific bets
         const { data } = await supabase
           .from('bets')
           .select(`
-            id,
-            selection,
-            line_at_bet,
-            wager_amount,
-            status,
-            odds,
-            bet_type,
-            games (
-              home_team,
-              away_team,
-              kickoff,
-              home_score,
-              away_score,
-              status
-            )
+            id, selection, line_at_bet, wager_amount, status, odds, bet_type,
+            games (home_team, away_team, kickoff, home_score, away_score, status, week_number)
           `)
           .eq('user_id', session.user.id)
           .order('created_at', { ascending: false });
@@ -43,7 +39,6 @@ export default function MyBets() {
       setLoading(false);
     }
     fetchUserBets();
-    
   }, []);
 
   if (loading) return <main className="p-8 text-center font-black uppercase italic text-gray-700">Loading Slips...</main>;
