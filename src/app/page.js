@@ -16,8 +16,8 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [recentMessages, setRecentMessages] = useState([]);
   const [stats, setStats] = useState({ topWhale: 0, activeBets: 0 });
+  const [balance, setBalance] = useState(0);
   
-  // NEW: Week Filtering State
   const [availableWeeks, setAvailableWeeks] = useState([]);
   const [activeWeek, setActiveWeek] = useState(null);
 
@@ -28,18 +28,15 @@ export default function Home() {
         setUser(session.user);
         const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
         setProfile(prof);
+        setBalance(prof?.balance || 0);
       }
       
       const { data: g } = await supabase.from('games').select('*').eq('status', 'pending').order('kickoff', { ascending: true });
-      
       if (g) {
         setGames(g);
-        // Automatically find unique weeks from pending games
         const weeks = [...new Set(g.map(game => game.week_number))].sort((a, b) => a - b);
         setAvailableWeeks(weeks);
-        if (weeks.length > 0) {
-            setActiveWeek(weeks[0]); // Default to the earliest pending week
-        }
+        if (weeks.length > 0) setActiveWeek(weeks[0]);
       }
       
       const { data: bets } = await supabase.from('bets').select('wager_amount').eq('status', 'pending');
@@ -91,18 +88,33 @@ export default function Home() {
 
   const handlePlaceBet = async () => {
     if (!betAmount || !selectedBet || !user) return;
+    
+    const wager = parseFloat(betAmount);
+
+    if (wager > 100) {
+      alert("❌ LEAGUE LIMIT: Max bet is $100.00. Don't go broke in Week 2.");
+      return;
+    }
+    if (wager > balance) {
+      alert("❌ INSUFFICIENT FUNDS: Your wallet is too light for this bet.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const wager = parseFloat(betAmount);
       const lineToSave = selectedBet.type === 'moneyline' 
         ? formatOdds(selectedBet.odds) 
         : `${selectedBet.value} (${formatOdds(selectedBet.odds)})`;
 
-      await supabase.from('bets').insert([{
+      const { error: insertError } = await supabase.from('bets').insert([{
         user_id: user.id, game_id: selectedBet.game.id, selection: selectedBet.selection,
         bet_type: selectedBet.type, line_at_bet: lineToSave, wager_amount: wager, status: 'pending'
       }]);
-      
+
+      if (insertError) throw insertError;
+
+      await supabase.from('profiles').update({ balance: balance - wager }).eq('id', user.id);
+
       if (wager >= 50) {
         await supabase.from('messages').insert([{
           user_id: user.id, author_name: 'SYSTEM', content: `${profile?.display_name || 'Someone'} JUST DROPPED A WHALE BET! 🐋💸`, message_type: 'system_alert'
@@ -110,16 +122,23 @@ export default function Home() {
       }
       setSelectedBet(null);
       setBetAmount("");
-      alert("Locked In!");
+      alert("✅ TICKET LOCKED IN!");
       window.location.reload();
-    } catch (err) { alert("Error placing bet."); }
+    } catch (err) { 
+      console.error(err);
+      alert("Error placing bet. Check your database permissions."); 
+    }
     finally { setIsSubmitting(false); }
   };
 
   const isCommissioner = profile?.role === 'admin' || profile?.display_name?.toUpperCase() === 'CJYES';
-
-  // Filter games based on the active week selected in the UI
-  const displayedGames = games.filter(g => g.week_number === activeWeek);
+  
+  // FIX: Filter out games that have already kicked off
+  const displayedGames = games.filter(g => {
+    const isCurrentWeek = g.week_number === activeWeek;
+    const hasNotStarted = new Date(g.kickoff) > new Date();
+    return isCurrentWeek && hasNotStarted;
+  });
 
   return (
     <main className="min-h-screen bg-slate-200 text-brand-dark font-sans pb-12">
@@ -137,6 +156,13 @@ export default function Home() {
           </div>
 
           <div className="flex gap-4 items-center flex-wrap justify-center">
+            
+            {/* WALLET */}
+            <div className="bg-[#1e293b] px-4 py-1.5 rounded-lg border border-brand-volt/20 text-right mr-2 shadow-sm">
+              <p className="text-[8px] font-black text-gray-500 uppercase leading-none mb-1">Wallet</p>
+              <p className="text-lg font-black text-brand-volt leading-none tracking-tighter">${balance.toFixed(2)}</p>
+            </div>
+
             {isCommissioner && (
               <>
                 <a href="/commissioner" className="text-[10px] font-black text-brand-volt uppercase hover:text-white transition-colors">Front Office</a>
@@ -145,7 +171,7 @@ export default function Home() {
               </>
             )}
             <a href="/feed" className="text-[10px] font-black text-white uppercase hover:text-brand-volt transition-colors">Action Feed</a>
-            <a href="YOUR_GOOGLE_FORM_LINK" target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-gray-400 uppercase hover:text-brand-volt transition-colors">Feedback</a>
+            <a href="https://docs.google.com/forms/d/e/1FAIpQLScaec7ad9MQCanDmLrWQ8s6pQ-JnEMZhRvxtTm4tLTuK2eaSg/viewform?usp=header" target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-gray-400 uppercase hover:text-brand-volt transition-colors">Feedback</a>
             <a href="/my-bets" className="bg-brand-violet text-white px-4 py-2 rounded font-black uppercase text-[10px] hover:bg-white hover:text-brand-violet transition-colors shadow-md">My Slips</a>
             <button onClick={() => supabase.auth.signOut().then(() => window.location.reload())} className="text-[9px] text-gray-500 font-bold uppercase border-l border-gray-800 pl-4 hover:text-red-400 transition-colors">Sign Out</button>
           </div>
@@ -166,7 +192,7 @@ export default function Home() {
                     <button 
                       key={weekNum}
                       onClick={() => setActiveWeek(weekNum)}
-                      className={`px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
+                      className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
                         activeWeek === weekNum 
                         ? 'bg-brand-violet text-white shadow-md' 
                         : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-violet hover:text-brand-violet'
@@ -201,8 +227,6 @@ export default function Home() {
 
                 return (
                   <div key={game.id} className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
-                    
-                    {/* GAME HEADER */}
                     <div className="bg-[#0b0f19] p-3 flex justify-between items-center px-4 border-b-4 border-brand-violet">
                       <div className="flex items-center gap-2">
                         <span className="text-[11px] font-black text-brand-volt uppercase tracking-widest">{kickoffDate.toLocaleDateString()}</span>
@@ -214,13 +238,9 @@ export default function Home() {
 
                     <div className="p-4 md:p-6">
                       <div className="text-center mb-5 pb-4 border-b border-gray-100 flex flex-wrap justify-center items-center gap-2">
-                        <h3 className="font-black text-lg md:text-xl text-brand-dark uppercase tracking-tight whitespace-nowrap">
-                          {game.away_team}
-                        </h3>
+                        <h3 className="font-black text-lg md:text-xl text-brand-dark uppercase tracking-tight whitespace-nowrap">{game.away_team}</h3>
                         <span className="text-gray-300 font-medium italic mx-1">@</span>
-                        <h3 className="font-black text-lg md:text-xl text-brand-dark uppercase tracking-tight whitespace-nowrap">
-                          {game.home_team}
-                        </h3>
+                        <h3 className="font-black text-lg md:text-xl text-brand-dark uppercase tracking-tight whitespace-nowrap">{game.home_team}</h3>
                       </div>
 
                       <div className="grid grid-cols-[50px_1fr_1fr_1fr] md:grid-cols-[70px_1fr_1fr_1fr] gap-2 md:gap-3 mb-2 text-[9px] font-black text-gray-400 uppercase tracking-widest text-center items-end pb-1">

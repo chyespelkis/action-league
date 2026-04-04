@@ -11,12 +11,29 @@ export default function ActionFeed() {
   const [feed, setFeed] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // --- NEW WEEK SELECTOR STATE ---
+  // Nav Bar State
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [balance, setBalance] = useState(0);
+
+  // Week Selector State
   const [availableWeeks, setAvailableWeeks] = useState([]);
   const [selectedWeek, setSelectedWeek] = useState(null);
 
   useEffect(() => {
     async function loadFeed() {
+      // 1. Fetch User Data for Nav Bar
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setUser(session.user);
+        const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+        if (prof) {
+          setProfile(prof);
+          setBalance(prof.balance || 0);
+        }
+      }
+
+      // 2. Fetch Feed Data (Using your exact schema keys)
       const { data, error } = await supabase
         .from('bets')
         .select(`
@@ -34,14 +51,13 @@ export default function ActionFeed() {
       if (data) {
         setFeed(data);
         
-        // Find all unique week numbers from the games being bet on
+        // Find all unique week numbers
         const weeks = Array.from(new Set(data.map(b => b.games?.week_number)))
           .filter(w => w != null)
-          .sort((a, b) => b - a); // Sort descending (highest week first)
+          .sort((a, b) => b - a); 
         
         setAvailableWeeks(weeks);
         
-        // Default to the most recent week
         if (weeks.length > 0) {
           setSelectedWeek(weeks[0]);
         }
@@ -55,10 +71,12 @@ export default function ActionFeed() {
     return new Date() >= new Date(kickoffTime);
   };
 
-  // --- FILTER ACTION BY SELECTED WEEK ---
+  const isCommissioner = profile?.role === 'admin' || profile?.display_name?.toUpperCase() === 'CJYES';
+
+  // Filter action by selected week
   const currentFeed = feed.filter(b => b.games?.week_number === selectedWeek);
 
-  // --- DATA PROCESSING FOR THE MATRIX (Using filtered feed) ---
+  // Data processing for the matrix
   const players = Array.from(new Set(currentFeed.map(b => b.profiles?.display_name || 'Unknown'))).sort();
 
   const uniqueGamesMap = new Map();
@@ -70,49 +88,83 @@ export default function ActionFeed() {
   const games = Array.from(uniqueGamesMap.values()).sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
 
   return (
-    <main className="min-h-screen bg-slate-200 p-2 md:p-4">
-      <div className="max-w-[1400px] mx-auto">
-        
-        {/* HEADER SECTION WITH DROPDOWN */}
-        <div className="flex justify-between items-end mb-4 border-b-4 border-brand-violet pb-2">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-black uppercase italic tracking-tighter text-brand-dark">The Action Matrix</h1>
-            
-            {/* WEEK SELECTOR DROPDOWN */}
-            {availableWeeks.length > 0 && (
-              <select 
-                value={selectedWeek || ''} 
-                onChange={(e) => setSelectedWeek(Number(e.target.value))}
-                className="bg-white border-2 border-brand-dark text-brand-dark font-black uppercase text-xs rounded-lg px-2 py-1 outline-none cursor-pointer shadow-sm focus:border-brand-violet transition-colors"
-              >
-                {availableWeeks.map(w => (
-                  <option key={w} value={w}>WEEK {w}</option>
-                ))}
-              </select>
-            )}
+    <main className="min-h-screen bg-slate-200 text-brand-dark font-sans pb-12">
+      
+      {/* BRANDED NAV BAR */}
+      <nav className="bg-[#0b0f19] p-4 border-b-2 border-brand-violet sticky top-0 z-40 shadow-xl">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-4">
+            <a href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+              <img src="/icon.png" alt="Action League" className="w-10 h-10 object-contain" />
+              <h1 className="text-2xl font-black text-brand-volt italic tracking-tighter uppercase leading-none">Action League</h1>
+            </a>
+            <div className="h-6 w-px bg-gray-700 hidden md:block"></div>
+            <a href="/leaderboard" className="text-[10px] font-black text-brand-violet uppercase hover:text-white transition-colors tracking-widest bg-brand-violet/10 px-3 py-1.5 rounded-full border border-brand-violet/30">Standings →</a>
           </div>
 
-          <a href="/" className="bg-brand-dark text-brand-volt px-3 py-1.5 rounded font-black uppercase tracking-widest hover:bg-brand-panel transition-colors text-[10px] shadow-md">
-            Board
-          </a>
+          <div className="flex gap-4 items-center flex-wrap justify-center">
+            
+            {/* WALLET */}
+            <div className="bg-[#1e293b] px-4 py-1.5 rounded-lg border border-brand-volt/20 text-right mr-2 shadow-sm">
+              <p className="text-[8px] font-black text-gray-500 uppercase leading-none mb-1">Wallet</p>
+              <p className="text-lg font-black text-brand-volt leading-none tracking-tighter">${balance.toFixed(2)}</p>
+            </div>
+
+            {isCommissioner && (
+              <>
+                <a href="/commissioner" className="text-[10px] font-black text-brand-volt uppercase hover:text-white transition-colors">Front Office</a>
+                <a href="/grade" className="text-[10px] font-black text-brand-volt uppercase hover:text-white transition-colors">Grade</a>
+                <div className="h-4 w-px bg-gray-700"></div>
+              </>
+            )}
+            <a href="/" className="text-[10px] font-black text-white uppercase hover:text-brand-volt transition-colors">The Board</a>
+            <a href="YOUR_GOOGLE_FORM_LINK" target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-gray-400 uppercase hover:text-brand-volt transition-colors">Feedback</a>
+            <a href="/my-bets" className="bg-brand-violet text-white px-4 py-2 rounded font-black uppercase text-[10px] hover:bg-white hover:text-brand-violet transition-colors shadow-md">My Slips</a>
+            <button onClick={() => supabase.auth.signOut().then(() => window.location.reload())} className="text-[9px] text-gray-500 font-bold uppercase border-l border-gray-800 pl-4 hover:text-red-400 transition-colors">Sign Out</button>
+          </div>
+        </div>
+      </nav>
+
+      <div className="max-w-[1400px] mx-auto p-4 md:p-8 mt-4">
+        
+        {/* HEADER SECTION WITH PILL TOGGLES */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 border-b-2 border-gray-300 pb-4 gap-4">
+          <h1 className="text-3xl font-black uppercase italic tracking-tighter text-brand-dark">The Action Matrix</h1>
+          
+          {/* STYLED WEEK SELECTOR UI */}
+          <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+            {availableWeeks.map(w => (
+              <button 
+                key={w}
+                onClick={() => setSelectedWeek(w)}
+                className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all shadow-sm ${
+                  selectedWeek === w 
+                  ? 'bg-brand-violet text-white shadow-md' 
+                  : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-violet hover:text-brand-violet'
+                }`}
+              >
+                Week {w}
+              </button>
+            ))}
+          </div>
         </div>
 
         {loading ? (
           <div className="p-8 text-center font-black uppercase italic text-brand-dark">Loading Action...</div>
         ) : currentFeed.length === 0 ? (
-          <div className="bg-white p-8 rounded-xl shadow-xl border text-center">
-            <p className="text-gray-500 font-bold uppercase text-xs">No action placed for Week {selectedWeek}.</p>
+          <div className="bg-white p-12 rounded-2xl shadow-xl border border-gray-200 text-center">
+            <p className="text-gray-400 font-bold uppercase italic">No action placed for Week {selectedWeek}.</p>
           </div>
         ) : (
-          <div className="bg-white rounded shadow-xl border border-gray-200 overflow-x-auto">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden overflow-x-auto">
             <table className="text-left border-collapse min-w-full">
               
-              {/* TABLE HEADER */}
-              <thead className="bg-brand-dark text-brand-volt uppercase font-black text-[9px] md:text-[10px] tracking-widest">
+              {/* THEMED TABLE HEADER */}
+              <thead className="bg-[#0b0f19] text-white uppercase font-black text-[9px] md:text-[10px] tracking-widest border-b-4 border-brand-violet">
                 <tr>
-                  <th className="px-3 py-2 whitespace-nowrap border-r border-gray-700 w-[140px]">Matchup</th>
+                  <th className="px-4 py-3 whitespace-nowrap border-r border-gray-800 w-[140px] text-gray-400">Matchup</th>
                   {players.map(player => (
-                    <th key={player} className="px-2 py-2 text-center border-r border-gray-700 w-[120px] max-w-[120px] truncate">
+                    <th key={player} className="px-2 py-3 text-center border-r border-gray-800 w-[120px] max-w-[120px] truncate text-brand-volt">
                       {player}
                     </th>
                   ))}
@@ -121,18 +173,18 @@ export default function ActionFeed() {
               </thead>
 
               {/* TABLE BODY */}
-              <tbody>
+              <tbody className="divide-y divide-gray-100">
                 {games.map((game, index) => {
                   const started = hasGameStarted(game.kickoff);
                   
                   return (
-                    <tr key={game.id} className={`border-b border-gray-200 hover:bg-gray-100 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                    <tr key={game.id} className="hover:bg-slate-50 transition-colors">
                       
                       {/* GAME INFO COLUMN */}
-                      <td className="px-3 py-2 border-r border-gray-200 whitespace-nowrap">
+                      <td className="px-4 py-3 border-r border-gray-100 whitespace-nowrap">
                         <div className="flex flex-col">
-                          <span className="text-[11px] font-black text-brand-dark leading-tight">{game.away_abbr} @ {game.home_abbr}</span>
-                          <span className="text-[9px] text-gray-400 font-bold uppercase mt-0.5">
+                          <span className="text-xs font-black text-brand-dark leading-tight">{game.away_abbr} @ {game.home_abbr}</span>
+                          <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 tracking-wider">
                             {new Date(game.kickoff).toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'})}
                           </span>
                         </div>
@@ -143,14 +195,14 @@ export default function ActionFeed() {
                         const playerBets = currentFeed.filter(b => b.game_id === game.id && (b.profiles?.display_name || 'Unknown') === player);
 
                         return (
-                          <td key={`${game.id}-${player}`} className="px-2 py-2 border-r border-gray-200 align-middle">
+                          <td key={`${game.id}-${player}`} className="px-2 py-3 border-r border-gray-100 align-middle">
                             {playerBets.length === 0 ? (
                               <div className="text-center text-gray-200 font-black text-xs">-</div>
                             ) : (
-                              <div className="flex flex-col gap-1 items-center">
+                              <div className="flex flex-col gap-1.5 items-center">
                                 {playerBets.map(bet => {
                                   
-                                  // --- AUTO-ABBREVIATION & FORMATTING SCRIPT ---
+                                  // Auto-Abbreviation Script
                                   let shortPick = bet.selection;
                                   let isTotal = false;
 
@@ -167,17 +219,16 @@ export default function ActionFeed() {
                                     if (!isTotal && numLine > 0) {
                                       lineAmount = ` +${numLine}`;
                                     } else {
-                                      lineAmount = ` ${bet.line_at_bet}`;
+                                      lineAmount = ` ${parseFloat(bet.line_at_bet)}`; // Trims trailing garbage from odds format
                                     }
                                   }
 
                                   const finalPickString = `${shortPick}${lineAmount}`;
-                                  // ----------------------------------------------
 
                                   // 1. Locked Game
                                   if (!started) {
                                     return (
-                                      <div key={bet.id} className="text-gray-400 bg-gray-200 px-1.5 py-0.5 rounded text-[9px] font-black tracking-widest w-full text-center flex justify-center items-center gap-1">
+                                      <div key={bet.id} className="text-gray-500 bg-gray-100 px-2 py-1 rounded text-[10px] font-black tracking-widest w-full text-center flex justify-center items-center gap-1 shadow-sm border border-gray-200">
                                         <span>🔒</span>
                                         <span>${parseFloat(bet.wager_amount).toFixed(0)}</span>
                                       </div>
@@ -185,24 +236,24 @@ export default function ActionFeed() {
                                   }
 
                                   // 2. Graded / Started Game
-                                  let bgColor = "bg-gray-100 border-gray-300 text-gray-700";
+                                  let bgColor = "bg-white border-gray-200 text-brand-dark";
                                   let resultString = `$${parseFloat(bet.wager_amount).toFixed(0)}`;
 
                                   if (bet.status === 'won') {
-                                    bgColor = "bg-green-100 border-green-400 text-green-800";
+                                    bgColor = "bg-green-50 border-green-400 text-green-700 shadow-sm";
                                     resultString = `+$${parseFloat(bet.wager_amount).toFixed(0)}`; 
                                   } else if (bet.status === 'lost') {
-                                    bgColor = "bg-red-100 border-red-300 text-red-800";
+                                    bgColor = "bg-red-50 border-red-300 text-red-700";
                                     resultString = `-$${parseFloat(bet.wager_amount).toFixed(0)}`;
                                   } else if (bet.status === 'push') {
-                                    bgColor = "bg-gray-200 border-gray-400 text-gray-700";
+                                    bgColor = "bg-yellow-50 border-yellow-400 text-yellow-700";
                                     resultString = "$0";
                                   }
 
                                   return (
-                                    <div key={bet.id} className={`border rounded px-1.5 py-1 w-full flex justify-between items-center shadow-sm ${bgColor}`}>
+                                    <div key={bet.id} className={`border rounded-lg px-2 py-1.5 w-full flex justify-between items-center ${bgColor}`}>
                                       <span className="font-black text-[10px] uppercase tracking-wider whitespace-nowrap">{finalPickString}</span>
-                                      <span className="font-bold text-[9px] tracking-wider opacity-80 pl-2">{resultString}</span>
+                                      <span className="font-bold text-[9px] tracking-wider opacity-90 pl-2">{resultString}</span>
                                     </div>
                                   );
                                 })}

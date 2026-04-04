@@ -43,6 +43,7 @@ export default function MyBets() {
       setLoading(false);
     }
     fetchUserBets();
+    
   }, []);
 
   if (loading) return <main className="p-8 text-center font-black uppercase italic text-gray-700">Loading Slips...</main>;
