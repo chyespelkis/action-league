@@ -22,6 +22,7 @@ export default function ActionFeed() {
 
   useEffect(() => {
     async function loadFeed() {
+      // 1. Fetch User Data for Nav Bar
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setUser(session.user);
@@ -32,21 +33,35 @@ export default function ActionFeed() {
         }
       }
 
-      // 1. Fetch weeks directly from the games table
-      const { data: allGames } = await supabase.from('games').select('week_number');
-      if (allGames) {
-        const weeks = [...new Set(allGames.map(g => g.week_number).filter(Boolean))].sort((a, b) => b - a);
-        setAvailableWeeks(weeks);
-        if (weeks.length > 0) setSelectedWeek(weeks[0]);
-      }
-
-      // 2. Fetch all action
+      // 2. Fetch Feed Data (Using your exact schema keys)
       const { data, error } = await supabase
         .from('bets')
-        .select(`*, games!fk_bets_games (*), profiles!fk_bets_profiles (display_name)`)
+        .select(`
+          *,
+          games!fk_bets_games (*),
+          profiles!fk_bets_profiles (display_name)
+        `)
         .order('created_at', { ascending: false });
 
-      if (data) setFeed(data);
+      if (error) {
+        console.error("Supabase Error:", error);
+        alert("Database Error: " + error.message);
+      }
+
+      if (data) {
+        setFeed(data);
+        
+        // Find all unique week numbers
+        const weeks = Array.from(new Set(data.map(b => b.games?.week_number)))
+          .filter(w => w != null)
+          .sort((a, b) => b - a); 
+        
+        setAvailableWeeks(weeks);
+        
+        if (weeks.length > 0) {
+          setSelectedWeek(weeks[0]);
+        }
+      }
       setLoading(false);
     }
     loadFeed();
@@ -210,12 +225,11 @@ export default function ActionFeed() {
 
                                   const finalPickString = `${shortPick}${lineAmount}`;
 
-                                  // 1. Locked Game
+                                  // 1. Locked Game (HIDES THE WAGER AMOUNT)
                                   if (!started) {
                                     return (
-                                      <div key={bet.id} className="text-gray-500 bg-gray-100 px-2 py-1 rounded text-[10px] font-black tracking-widest w-full text-center flex justify-center items-center gap-1 shadow-sm border border-gray-200">
-                                        <span>🔒</span>
-                                        <span>${parseFloat(bet.wager_amount).toFixed(0)}</span>
+                                      <div key={bet.id} className="text-gray-400 bg-gray-100 px-2 py-1.5 rounded text-sm w-full text-center flex justify-center items-center shadow-sm border border-gray-200">
+                                        🔒
                                       </div>
                                     );
                                   }
