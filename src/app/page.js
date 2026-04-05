@@ -8,7 +8,6 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function Home() {
-  // Application State
   const [games, setGames] = useState([]);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -17,12 +16,15 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [recentMessages, setRecentMessages] = useState([]);
   const [stats, setStats] = useState({ topWhale: 0, activeBets: 0 });
-  const [balance, setBalance] = useState(0);
-  const [pageLoading, setPageLoading] = useState(true); // Prevents login flashing
+  const [pageLoading, setPageLoading] = useState(true);
   
-  // Week Filtering State
   const [availableWeeks, setAvailableWeeks] = useState([]);
   const [activeWeek, setActiveWeek] = useState(null);
+
+  // New Dynamic Wallet State
+  const [myBets, setMyBets] = useState([]);
+  const [availableAmmo, setAvailableAmmo] = useState(100);
+  const [totalWinnings, setTotalWinnings] = useState(0);
 
   // Auth State
   const [email, setEmail] = useState("");
@@ -31,6 +33,14 @@ export default function Home() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
 
+  const calculateProfit = (wager, oddsStr) => {
+    const amount = parseFloat(wager);
+    if (isNaN(amount) || amount <= 0) return { profit: "0.00", total: "0.00", rawProfit: 0 };
+    let odds = parseFloat(oddsStr) || -110;
+    let profit = odds > 0 ? (amount * odds) / 100 : amount / (Math.abs(odds) / 100);
+    return { profit: profit.toFixed(2), total: (amount + profit).toFixed(2), rawProfit: profit };
+  };
+
   useEffect(() => {
     async function getInitialData() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -38,12 +48,16 @@ export default function Home() {
       if (session) {
         setUser(session.user);
         const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-        if (prof) {
-          setProfile(prof);
-          setBalance(prof.balance || 0);
-        }
+        if (prof) setProfile(prof);
         
-        // Fetch Games
+        // Fetch all user's bets to calculate their dynamic wallet
+        const { data: userBets } = await supabase
+          .from('bets')
+          .select('wager_amount, odds, status, games!fk_bets_games(week_number)')
+          .eq('user_id', session.user.id);
+          
+        if (userBets) setMyBets(userBets);
+
         const { data: g } = await supabase.from('games').select('*').eq('status', 'pending').order('kickoff', { ascending: true });
         if (g) {
           setGames(g);
@@ -52,7 +66,6 @@ export default function Home() {
           if (weeks.length > 0) setActiveWeek(weeks[0]);
         }
         
-        // Fetch League Intel
         const { data: bets } = await supabase.from('bets').select('wager_amount').eq('status', 'pending');
         if (bets && bets.length > 0) {
           const top = Math.max(...bets.map(b => b.wager_amount), 0);
@@ -62,7 +75,6 @@ export default function Home() {
         const { data: msgs } = await supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(6);
         setRecentMessages(msgs || []);
       }
-      
       setPageLoading(false);
     }
     getInitialData();
@@ -73,7 +85,24 @@ export default function Home() {
     return () => supabase.removeChannel(channel);
   }, []);
 
-  // --- AUTHENTICATION HANDLER ---
+  // --- DYNAMIC WALLET CALCULATOR ---
+  useEffect(() => {
+    if (activeWeek !== null && myBets.length > 0) {
+      // 1. Calculate how much ammo they have left for the ACTIVE week
+      const betsThisWeek = myBets.filter(b => b.games?.week_number === activeWeek);
+      const spentThisWeek = betsThisWeek.reduce((sum, bet) => sum + parseFloat(bet.wager_amount), 0);
+      setAvailableAmmo(Math.max(0, 100 - spentThisWeek));
+
+      // 2. Calculate their all-time total winnings
+      const wonBets = myBets.filter(b => b.status === 'won');
+      const totalWon = wonBets.reduce((sum, bet) => sum + calculateProfit(bet.wager_amount, bet.odds).rawProfit, 0);
+      setTotalWinnings(totalWon);
+    } else {
+      setAvailableAmmo(100); // Default if no bets placed
+      setTotalWinnings(0);
+    }
+  }, [activeWeek, myBets]);
+
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthLoading(true);
@@ -89,28 +118,13 @@ export default function Home() {
         alert("Account created successfully! You can now sign in.");
         setAuthView('sign_in');
       }
-    } catch (err) {
-      setAuthError(err.message);
-    } finally {
-      setAuthLoading(false);
-    }
+    } catch (err) { setAuthError(err.message); } 
+    finally { setAuthLoading(false); }
   };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    window.location.href = '/'; // Forces a hard reset to the login screen
-  };
-
-  const calculatePayout = (wager, oddsStr) => {
-    const amount = parseFloat(wager);
-    if (isNaN(amount) || amount <= 0) return { profit: "0.00", total: "0.00" };
-    let odds = parseFloat(oddsStr);
-    if (isNaN(odds)) odds = -110;
-
-    let profit = 0;
-    if (odds > 0) profit = (amount * odds) / 100;
-    else profit = amount / (Math.abs(odds) / 100);
-    return { profit: profit.toFixed(2), total: (amount + profit).toFixed(2) };
+    window.location.href = '/';
   };
 
   const formatLine = (val) => {
@@ -129,23 +143,17 @@ export default function Home() {
 
   const handlePlaceBet = async () => {
     if (!betAmount || !selectedBet || !user) return;
-    
     const wager = parseFloat(betAmount);
 
-    if (wager > 100) {
-      alert("❌ LEAGUE LIMIT: Max bet is $100.00. Don't go broke in Week 2.");
-      return;
-    }
-    if (wager > balance) {
-      alert("❌ INSUFFICIENT FUNDS: Your wallet is too light for this bet.");
+    // NEW DYNAMIC LIMIT CHECKS
+    if (wager > availableAmmo) {
+      alert(`❌ INSUFFICIENT AMMO: You only have $${availableAmmo.toFixed(2)} left to risk for Week ${activeWeek}.`);
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const numLine = selectedBet.type === 'moneyline' || selectedBet.value === 'ML' 
-        ? null 
-        : parseFloat(selectedBet.value);
+      const numLine = selectedBet.type === 'moneyline' || selectedBet.value === 'ML' ? null : parseFloat(selectedBet.value);
       const numOdds = parseFloat(selectedBet.odds) || -110;
 
       const { error: insertError } = await supabase.from('bets').insert([{
@@ -161,10 +169,7 @@ export default function Home() {
 
       if (insertError) throw insertError;
 
-      // Update Wallet
-      await supabase.from('profiles').update({ balance: balance - wager }).eq('id', user.id);
-
-      // Whale Alert (Randomized)
+      // Whale Alert
       if (wager >= 50) {
         const whaleMessages = [
           `${profile?.display_name || 'Someone'} JUST DROPPED A WHALE BET! 🐋💸`,
@@ -174,10 +179,7 @@ export default function Home() {
           `Heavy action coming in from ${profile?.display_name || 'Someone'}. Fade or follow? 👀`
         ];
         const randomMsg = whaleMessages[Math.floor(Math.random() * whaleMessages.length)];
-
-        await supabase.from('messages').insert([{
-          user_id: user.id, author_name: 'SYSTEM', content: randomMsg, message_type: 'system_alert'
-        }]);
+        await supabase.from('messages').insert([{ user_id: user.id, author_name: 'SYSTEM', content: randomMsg, message_type: 'system_alert' }]);
       }
       setSelectedBet(null);
       setBetAmount("");
@@ -185,25 +187,16 @@ export default function Home() {
       window.location.reload();
     } catch (err) { 
       console.error(err);
-      alert(`Error placing bet: ${err.message || 'Database rejected the format.'}`); 
+      alert(`Error placing bet: ${err.message}`); 
     }
     finally { setIsSubmitting(false); }
   };
 
   const isCommissioner = profile?.role === 'admin' || profile?.display_name?.toUpperCase() === 'CJYES';
-  
-  const displayedGames = games.filter(g => {
-    const isCurrentWeek = g.week_number === activeWeek;
-    const hasNotStarted = new Date(g.kickoff) > new Date();
-    return isCurrentWeek && hasNotStarted;
-  });
+  const displayedGames = games.filter(g => g.week_number === activeWeek && new Date(g.kickoff) > new Date());
 
-  // --- LOADING SCREEN ---
-  if (pageLoading) {
-    return <main className="min-h-screen bg-slate-200 flex items-center justify-center font-black uppercase tracking-widest text-brand-dark text-xl">Opening The Book...</main>;
-  }
+  if (pageLoading) return <main className="min-h-screen bg-slate-200 flex items-center justify-center font-black uppercase tracking-widest text-brand-dark text-xl">Opening The Book...</main>;
 
-  // --- THE LOCKER ROOM LOGIN SCREEN ---
   if (!user) {
     return (
       <main className="min-h-screen bg-slate-200 flex flex-col items-center justify-center p-4">
@@ -215,37 +208,20 @@ export default function Home() {
         
         <div className="bg-white p-8 rounded-3xl shadow-2xl border border-gray-200 w-full max-w-md">
           <div className="flex gap-4 mb-8 border-b-2 border-gray-100 pb-4">
-            <button 
-              onClick={() => { setAuthView('sign_in'); setAuthError(null); }} 
-              className={`flex-1 font-black uppercase tracking-widest text-xs pb-2 transition-colors ${authView === 'sign_in' ? 'text-brand-violet border-b-2 border-brand-violet' : 'text-gray-400 hover:text-gray-600'}`}
-            >
-              Sign In
-            </button>
-            <button 
-              onClick={() => { setAuthView('sign_up'); setAuthError(null); }} 
-              className={`flex-1 font-black uppercase tracking-widest text-xs pb-2 transition-colors ${authView === 'sign_up' ? 'text-brand-violet border-b-2 border-brand-violet' : 'text-gray-400 hover:text-gray-600'}`}
-            >
-              Register
-            </button>
+            <button onClick={() => { setAuthView('sign_in'); setAuthError(null); }} className={`flex-1 font-black uppercase tracking-widest text-xs pb-2 transition-colors ${authView === 'sign_in' ? 'text-brand-violet border-b-2 border-brand-violet' : 'text-gray-400 hover:text-gray-600'}`}>Sign In</button>
+            <button onClick={() => { setAuthView('sign_up'); setAuthError(null); }} className={`flex-1 font-black uppercase tracking-widest text-xs pb-2 transition-colors ${authView === 'sign_up' ? 'text-brand-violet border-b-2 border-brand-violet' : 'text-gray-400 hover:text-gray-600'}`}>Register</button>
           </div>
 
           <form onSubmit={handleAuth} className="space-y-6">
-            {authError && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-[10px] font-bold uppercase border border-red-200">
-                {authError}
-              </div>
-            )}
-            
+            {authError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-[10px] font-bold uppercase border border-red-200">{authError}</div>}
             <div>
               <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Email</label>
               <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-50 border-2 border-gray-200 rounded-xl px-4 py-3 font-bold text-brand-dark focus:border-brand-violet outline-none transition-colors" placeholder="player@actionleague.com" />
             </div>
-            
             <div>
               <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Password</label>
               <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-50 border-2 border-gray-200 rounded-xl px-4 py-3 font-bold text-brand-dark focus:border-brand-violet outline-none transition-colors" placeholder="••••••••" />
             </div>
-
             <button type="submit" disabled={authLoading} className="w-full bg-[#0b0f19] text-brand-volt py-4 rounded-xl font-black uppercase tracking-widest hover:bg-brand-dark transition-colors shadow-lg disabled:opacity-50 mt-4">
               {authLoading ? 'Verifying...' : (authView === 'sign_in' ? 'Enter The Book' : 'Join League')}
             </button>
@@ -255,10 +231,8 @@ export default function Home() {
     );
   }
 
-  // --- MAIN DASHBOARD (Only renders if logged in) ---
   return (
     <main className="min-h-screen bg-slate-200 text-brand-dark font-sans pb-12">
-      {/* BRANDED NAV BAR */}
       <nav className="bg-[#0b0f19] p-4 border-b-2 border-brand-violet sticky top-0 z-40 shadow-xl">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-4">
@@ -271,10 +245,17 @@ export default function Home() {
           </div>
 
           <div className="flex gap-4 items-center flex-wrap justify-center">
-            {/* WALLET */}
-            <div className="bg-[#1e293b] px-4 py-1.5 rounded-lg border border-brand-volt/20 text-right mr-2 shadow-sm">
-              <p className="text-[8px] font-black text-gray-500 uppercase leading-none mb-1">Wallet</p>
-              <p className="text-lg font-black text-brand-volt leading-none tracking-tighter">${balance.toFixed(2)}</p>
+            
+            {/* NEW DUAL-WALLET DISPLAY */}
+            <div className="flex gap-2 mr-2">
+              <div className="bg-[#1e293b] px-3 py-1.5 rounded-lg border border-gray-700 text-right shadow-sm">
+                <p className="text-[8px] font-black text-gray-500 uppercase leading-none mb-1">Wk {activeWeek || '?'} Ammo</p>
+                <p className="text-base font-black text-white leading-none tracking-tighter">${availableAmmo.toFixed(2)}</p>
+              </div>
+              <div className="bg-brand-volt/10 px-3 py-1.5 rounded-lg border border-brand-volt/30 text-right shadow-sm">
+                <p className="text-[8px] font-black text-brand-volt uppercase leading-none mb-1 opacity-80">Total Won</p>
+                <p className="text-base font-black text-brand-volt leading-none tracking-tighter">${totalWinnings.toFixed(2)}</p>
+              </div>
             </div>
 
             {isCommissioner && (
@@ -293,7 +274,6 @@ export default function Home() {
       </nav>
 
       <div className="max-w-7xl mx-auto p-4 md:p-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
-        {/* THE BOARD */}
         <div className="lg:col-span-3 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b-2 border-gray-300 pb-2 mb-4">
              <h2 className="text-sm font-black uppercase tracking-[0.2em] text-gray-500">The Board</h2>
@@ -326,7 +306,6 @@ export default function Home() {
                 const totalVal = game.total_points ?? game.over_under ?? game.total ?? '—';
                 const awaySpread = game.away_spread ?? game.spread ?? 0;
                 const homeSpread = game.home_spread ?? (awaySpread ? (parseFloat(awaySpread) * -1) : 0);
-                
                 const awaySpreadOdds = game.away_spread_odds ?? -110;
                 const homeSpreadOdds = game.home_spread_odds ?? -110;
                 const overOdds = game.over_odds ?? -110;
@@ -365,17 +344,14 @@ export default function Home() {
                         <div className="border-l-4 border-gray-300 pl-2">
                           <span className="font-black text-sm md:text-lg text-brand-dark uppercase">{game.away_abbr}</span>
                         </div>
-                        
                         <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'spread', value: awaySpread, odds: awaySpreadOdds })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
                           <span className="font-black text-sm md:text-base leading-none mb-1">{formatLine(awaySpread)}</span>
                           <span className="text-[9px] md:text-[10px] font-bold text-gray-400 group-hover:text-brand-dark/70 leading-none">{formatOdds(awaySpreadOdds)}</span>
                         </button>
-                        
                         <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'moneyline', value: 'ML', odds: awayMl })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
                           <span className="font-black text-sm md:text-base leading-none mb-1">{awayMl !== '—' ? formatOdds(awayMl) : 'ML'}</span>
                           <span className="text-[9px] md:text-[10px] font-bold text-gray-400 group-hover:text-brand-dark/70 leading-none">{awayMl !== '—' ? 'ML' : 'Pick Em'}</span>
                         </button>
-                        
                         <button onClick={() => setSelectedBet({ game, selection: 'OVER', type: 'total', value: totalVal, odds: overOdds })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
                           <div className="flex items-center gap-1 mb-1">
                             <span className="text-[8px] md:text-[9px] uppercase text-gray-400 font-bold group-hover:text-brand-dark/70 leading-none">O</span>
@@ -390,17 +366,14 @@ export default function Home() {
                         <div className="border-l-4 border-brand-violet pl-2">
                           <span className="font-black text-sm md:text-lg text-brand-violet uppercase">{game.home_abbr}</span>
                         </div>
-                        
                         <button onClick={() => setSelectedBet({ game, selection: game.home_abbr, type: 'spread', value: homeSpread, odds: homeSpreadOdds })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
                           <span className="font-black text-sm md:text-base leading-none mb-1">{formatLine(homeSpread)}</span>
                           <span className="text-[9px] md:text-[10px] font-bold text-gray-400 group-hover:text-brand-dark/70 leading-none">{formatOdds(homeSpreadOdds)}</span>
                         </button>
-                        
                         <button onClick={() => setSelectedBet({ game, selection: game.home_abbr, type: 'moneyline', value: 'ML', odds: homeMl })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
                           <span className="font-black text-sm md:text-base leading-none mb-1">{homeMl !== '—' ? formatOdds(homeMl) : 'ML'}</span>
                           <span className="text-[9px] md:text-[10px] font-bold text-gray-400 group-hover:text-brand-dark/70 leading-none">{homeMl !== '—' ? 'ML' : 'Pick Em'}</span>
                         </button>
-                        
                         <button onClick={() => setSelectedBet({ game, selection: 'UNDER', type: 'total', value: totalVal, odds: underOdds })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
                           <div className="flex items-center gap-1 mb-1">
                             <span className="text-[8px] md:text-[9px] uppercase text-gray-400 font-bold group-hover:text-brand-dark/70 leading-none">U</span>
@@ -418,7 +391,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* SIDEBAR */}
         <div className="space-y-6">
            <div className="bg-[#0b0f19] rounded-2xl p-6 text-white shadow-xl border-t-4 border-brand-volt">
               <h3 className="font-black italic uppercase tracking-tighter text-xl mb-4 text-brand-volt">League Intel</h3>
@@ -468,25 +440,55 @@ export default function Home() {
             </div>
             
             <div className="p-8">
-              <label className="block text-[11px] font-black text-gray-400 uppercase tracking-widest mb-3">Wager Amount ($)</label>
-              <input type="number" autoFocus value={betAmount} onChange={(e) => setBetAmount(e.target.value)} placeholder="0.00" className="w-full text-5xl font-black border-b-4 border-gray-100 bg-transparent text-brand-dark focus:border-brand-violet outline-none pb-2 mb-6" />
+              <div className="flex justify-between items-end mb-4">
+                <label className="block text-[11px] font-black text-gray-400 uppercase tracking-widest">Wager Amount ($)</label>
+                
+                {/* PROMINENT AMMO DISPLAY */}
+                <div className="bg-brand-violet/10 px-3 py-1.5 rounded border border-brand-violet/20 text-right">
+                  <span className="block text-[8px] font-black text-brand-violet uppercase tracking-widest mb-0.5">Remaining Ammo</span>
+                  <span className="block text-sm font-black text-brand-dark leading-none">${availableAmmo.toFixed(2)}</span>
+                </div>
+              </div>
+              
+              <div className="relative mb-6">
+                <input 
+                  type="number" 
+                  autoFocus 
+                  value={betAmount} 
+                  onChange={(e) => setBetAmount(e.target.value)} 
+                  placeholder="0.00" 
+                  className="w-full text-5xl font-black border-b-4 border-gray-100 bg-transparent text-brand-dark focus:border-brand-violet outline-none pb-2 pr-16" 
+                />
+                
+                {/* MAX BUTTON */}
+                <button 
+                  onClick={() => setBetAmount(availableAmmo.toString())}
+                  className="absolute right-0 bottom-4 bg-gray-200 text-gray-600 hover:bg-brand-violet hover:text-white px-3 py-1.5 rounded font-black text-[10px] uppercase tracking-widest transition-colors shadow-sm"
+                >
+                  Max
+                </button>
+              </div>
               
               {betAmount > 0 && (
                 <div className="bg-slate-50 p-5 rounded-xl border border-gray-200">
                   <div className="flex justify-between mb-2">
                     <span className="text-[11px] font-black text-gray-500 uppercase">To Win (Profit)</span>
-                    <span className="text-sm font-black text-green-600">+${calculatePayout(betAmount, selectedBet.odds).profit}</span>
+                    <span className="text-sm font-black text-green-600">+${calculateProfit(betAmount, selectedBet.odds).profit}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[11px] font-black text-gray-500 uppercase">Total Payout</span>
-                    <span className="text-sm font-black text-brand-dark">${calculatePayout(betAmount, selectedBet.odds).total}</span>
+                    <span className="text-sm font-black text-brand-dark">${calculateProfit(betAmount, selectedBet.odds).total}</span>
                   </div>
                 </div>
               )}
 
               <div className="flex gap-4 mt-8">
                 <button onClick={() => setSelectedBet(null)} className="w-1/3 text-gray-400 hover:text-brand-dark font-black uppercase text-xs transition-colors">Cancel</button>
-                <button onClick={handlePlaceBet} disabled={isSubmitting} className="w-2/3 bg-brand-dark text-brand-volt py-4 rounded-xl font-black uppercase tracking-widest hover:bg-[#1e293b] transition-colors shadow-lg active:scale-95 disabled:opacity-50">
+                <button 
+                  onClick={handlePlaceBet} 
+                  disabled={isSubmitting || parseFloat(betAmount) > availableAmmo || !betAmount || parseFloat(betAmount) <= 0} 
+                  className="w-2/3 bg-brand-dark text-brand-volt py-4 rounded-xl font-black uppercase tracking-widest hover:bg-[#1e293b] transition-colors shadow-lg active:scale-95 disabled:opacity-50 disabled:bg-gray-300 disabled:text-gray-500 disabled:shadow-none"
+                >
                   {isSubmitting ? 'Locking...' : 'Lock It In'}
                 </button>
               </div>

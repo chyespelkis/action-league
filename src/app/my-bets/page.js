@@ -12,14 +12,14 @@ export default function MyBets() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
   
-  // Header State
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [balance, setBalance] = useState(0);
-
-  // Week Toggle State
   const [availableWeeks, setAvailableWeeks] = useState([]);
   const [activeWeek, setActiveWeek] = useState(null);
+
+  // Dynamic Wallet State
+  const [availableAmmo, setAvailableAmmo] = useState(100);
+  const [totalWinnings, setTotalWinnings] = useState(0);
 
   useEffect(() => {
     async function fetchUserBets() {
@@ -29,15 +29,9 @@ export default function MyBets() {
         
         if (session?.user) {
           setUser(session.user);
-          
-          // 1. Fetch Profile & Wallet
           const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-          if (prof) {
-            setProfile(prof);
-            setBalance(prof.balance || 0);
-          }
+          if (prof) setProfile(prof);
 
-          // 2. Fetch all weeks to populate the toggles safely
           const { data: allGames } = await supabase.from('games').select('week_number');
           if (allGames) {
             const weeks = [...new Set(allGames.map(g => g.week_number).filter(Boolean))].sort((a, b) => b - a);
@@ -45,32 +39,20 @@ export default function MyBets() {
             if (weeks.length > 0) setActiveWeek(weeks[0]);
           }
 
-          // 3. Fetch Bets (With Fallback Logic to prevent crashes)
           let fetchedBets = [];
-          
-          // Primary attempt (using standard join)
           const { data: primaryData, error: primaryError } = await supabase
             .from('bets')
-            .select(`
-              id, selection, line_at_bet, wager_amount, status, bet_type, created_at,
-              games (home_team, away_team, kickoff, home_score, away_score, status, week_number, away_abbr, home_abbr)
-            `)
+            .select(`id, selection, line_at_bet, wager_amount, status, bet_type, created_at, odds, games (home_team, away_team, kickoff, home_score, away_score, status, week_number, away_abbr, home_abbr)`)
             .eq('user_id', session.user.id)
             .order('created_at', { ascending: false });
 
           if (primaryError) {
-            console.warn("Standard join failed, attempting explicit foreign key join...");
-            // Fallback attempt (using explicit fk from your feed page)
             const { data: fallbackData, error: fallbackError } = await supabase
               .from('bets')
-              .select(`
-                id, selection, line_at_bet, wager_amount, status, bet_type, created_at,
-                games!fk_bets_games (home_team, away_team, kickoff, home_score, away_score, status, week_number, away_abbr, home_abbr)
-              `)
+              .select(`id, selection, line_at_bet, wager_amount, status, bet_type, created_at, odds, games!fk_bets_games (home_team, away_team, kickoff, home_score, away_score, status, week_number, away_abbr, home_abbr)`)
               .eq('user_id', session.user.id)
               .order('created_at', { ascending: false });
-              
-            if (fallbackError) throw fallbackError; // If both fail, trigger the error screen
+            if (fallbackError) throw fallbackError;
             fetchedBets = fallbackData;
           } else {
             fetchedBets = primaryData;
@@ -88,6 +70,27 @@ export default function MyBets() {
     fetchUserBets();
   }, []);
 
+  // --- DYNAMIC WALLET CALCULATOR ---
+  useEffect(() => {
+    if (activeWeek !== null && bets.length > 0) {
+      const betsThisWeek = bets.filter(b => b.games?.week_number === activeWeek);
+      const spentThisWeek = betsThisWeek.reduce((sum, bet) => sum + parseFloat(bet.wager_amount), 0);
+      setAvailableAmmo(Math.max(0, 100 - spentThisWeek));
+
+      const wonBets = bets.filter(b => b.status === 'won');
+      const totalWon = wonBets.reduce((sum, bet) => {
+        const odds = parseFloat(bet.odds) || -110;
+        const amt = parseFloat(bet.wager_amount);
+        const profit = odds > 0 ? (amt * odds) / 100 : amt / (Math.abs(odds) / 100);
+        return sum + profit;
+      }, 0);
+      setTotalWinnings(totalWon);
+    } else {
+      setAvailableAmmo(100);
+      setTotalWinnings(0);
+    }
+  }, [activeWeek, bets]);
+
   const isCommissioner = profile?.role === 'admin' || profile?.display_name?.toUpperCase() === 'CJYES';
 
   if (loading) return <main className="min-h-screen bg-slate-200 p-8 text-center font-black uppercase italic text-gray-400 text-xl tracking-widest mt-20">Loading Slips...</main>;
@@ -102,17 +105,12 @@ export default function MyBets() {
     </main>
   );
 
-  // Filter bets based on the active week toggle
   const filteredBets = bets.filter(b => b.games?.week_number === activeWeek);
-  
-  // Split into Pending and Graded for a cleaner view
   const pendingBets = filteredBets.filter(b => b.status === 'pending');
   const gradedBets = filteredBets.filter(b => b.status !== 'pending');
 
   return (
     <main className="min-h-screen bg-slate-200 text-brand-dark font-sans pb-12">
-      
-      {/* BRANDED NAV BAR */}
       <nav className="bg-[#0b0f19] p-4 border-b-2 border-brand-violet sticky top-0 z-40 shadow-xl mb-8">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-4">
@@ -125,10 +123,16 @@ export default function MyBets() {
           </div>
 
           <div className="flex gap-4 items-center flex-wrap justify-center">
-            {/* WALLET */}
-            <div className="bg-[#1e293b] px-4 py-1.5 rounded-lg border border-brand-volt/20 text-right mr-2 shadow-sm">
-              <p className="text-[8px] font-black text-gray-500 uppercase leading-none mb-1">Wallet</p>
-              <p className="text-lg font-black text-brand-volt leading-none tracking-tighter">${balance.toFixed(2)}</p>
+            
+            <div className="flex gap-2 mr-2">
+              <div className="bg-[#1e293b] px-3 py-1.5 rounded-lg border border-gray-700 text-right shadow-sm">
+                <p className="text-[8px] font-black text-gray-500 uppercase leading-none mb-1">Wk {activeWeek || '?'} Ammo</p>
+                <p className="text-base font-black text-white leading-none tracking-tighter">${availableAmmo.toFixed(2)}</p>
+              </div>
+              <div className="bg-brand-volt/10 px-3 py-1.5 rounded-lg border border-brand-volt/30 text-right shadow-sm">
+                <p className="text-[8px] font-black text-brand-volt uppercase leading-none mb-1 opacity-80">Total Won</p>
+                <p className="text-base font-black text-brand-volt leading-none tracking-tighter">${totalWinnings.toFixed(2)}</p>
+              </div>
             </div>
 
             {isCommissioner && (
@@ -147,13 +151,9 @@ export default function MyBets() {
       </nav>
 
       <div className="max-w-6xl mx-auto p-4 md:p-8">
-        
-        {/* HEADER & WEEK TOGGLES */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 border-b-4 border-brand-violet pb-4 gap-4">
           <div>
             <h1 className="text-3xl font-black uppercase italic tracking-tighter text-brand-dark mb-3">My Bet Slips</h1>
-            
-            {/* WEEK SELECTOR UI */}
             {availableWeeks.length > 0 && (
               <div className="flex gap-2">
                 {availableWeeks.map(weekNum => (
@@ -180,31 +180,22 @@ export default function MyBets() {
           </div>
         ) : (
           <div className="space-y-10">
-            
-            {/* PENDING TICKETS */}
             {pendingBets.length > 0 && (
               <div>
                 <h3 className="text-sm font-black uppercase tracking-[0.2em] text-gray-500 border-b-2 border-gray-300 pb-2 mb-6">Pending Action</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {pendingBets.map((bet) => (
-                    <TicketCard key={bet.id} bet={bet} />
-                  ))}
+                  {pendingBets.map((bet) => <TicketCard key={bet.id} bet={bet} />)}
                 </div>
               </div>
             )}
-
-            {/* GRADED TICKETS */}
             {gradedBets.length > 0 && (
               <div>
                 <h3 className="text-sm font-black uppercase tracking-[0.2em] text-gray-500 border-b-2 border-gray-300 pb-2 mb-6">Graded Slips</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {gradedBets.map((bet) => (
-                    <TicketCard key={bet.id} bet={bet} />
-                  ))}
+                  {gradedBets.map((bet) => <TicketCard key={bet.id} bet={bet} />)}
                 </div>
               </div>
             )}
-
           </div>
         )}
       </div>
@@ -212,7 +203,6 @@ export default function MyBets() {
   );
 }
 
-// Extracted Card Component
 function TicketCard({ bet }) {
   const isWin = bet.status === 'won';
   const isLoss = bet.status === 'lost';
@@ -225,12 +215,15 @@ function TicketCard({ bet }) {
   const awayTeam = bet.games?.away_team || 'Away';
   const homeTeam = bet.games?.home_team || 'Home';
 
+  // Math for the ticket readout
+  const numOdds = parseFloat(bet.odds) || -110;
+  const amount = parseFloat(bet.wager_amount);
+  const profit = numOdds > 0 ? (amount * numOdds) / 100 : amount / (Math.abs(numOdds) / 100);
+
   return (
     <div className={`rounded-xl shadow-md hover:shadow-lg transition-shadow overflow-hidden border flex flex-col ${cardStyle}`}>
       <div className="bg-[#0b0f19] px-4 py-2 border-b-4 border-brand-violet flex justify-between items-center">
-        <span className="text-[10px] font-black text-brand-volt uppercase tracking-widest">
-          {bet.bet_type} Ticket
-        </span>
+        <span className="text-[10px] font-black text-brand-volt uppercase tracking-widest">{bet.bet_type} Ticket</span>
         {bet.games?.status === 'final' && (
           <span className="text-[10px] font-black text-white uppercase bg-brand-violet px-2 py-0.5 rounded shadow-sm">
             Final: {bet.games?.away_score} - {bet.games?.home_score}
@@ -240,21 +233,29 @@ function TicketCard({ bet }) {
 
       <div className="p-5 flex-1 flex flex-col justify-between">
         <div>
-          <p className="text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wider truncate">
-            {awayTeam} @ {homeTeam}
-          </p>
+          <p className="text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wider truncate">{awayTeam} @ {homeTeam}</p>
           <h2 className="text-xl font-black text-brand-dark uppercase italic leading-tight">
             {bet.selection} 
-            <span className="text-brand-violet not-italic ml-2 text-base">
-              {bet.line_at_bet}
-            </span>
+            <span className="text-brand-violet not-italic ml-2 text-base">{bet.line_at_bet}</span>
           </h2>
         </div>
         
         <div className="mt-6 flex justify-between items-end border-t border-gray-200 pt-4">
-          <p className="text-[10px] font-bold text-gray-500 uppercase">
-            Risked: <span className="text-gray-900 text-sm font-black ml-1">${parseFloat(bet.wager_amount).toFixed(2)}</span>
-          </p>
+          <div className="flex flex-col">
+            <p className="text-[10px] font-bold text-gray-500 uppercase">
+              Risked: <span className="text-gray-900 text-sm font-black ml-1">${amount.toFixed(2)}</span>
+            </p>
+            {isWin && (
+              <p className="text-[10px] font-bold text-green-700 uppercase mt-1">
+                Won: <span className="text-green-600 text-sm font-black ml-1">+${profit.toFixed(2)}</span>
+              </p>
+            )}
+            {isPending && (
+              <p className="text-[10px] font-bold text-gray-400 uppercase mt-1">
+                To Win: <span className="text-gray-500 text-sm font-black ml-1">+${profit.toFixed(2)}</span>
+              </p>
+            )}
+          </div>
           <div className={`px-3 py-1 rounded-md text-[10px] font-black uppercase italic border ${badgeStyle}`}>
             {bet.status}
           </div>
