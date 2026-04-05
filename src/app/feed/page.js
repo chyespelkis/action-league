@@ -33,7 +33,7 @@ export default function ActionFeed() {
         }
       }
 
-      // 2. Fetch Feed Data (Using your exact schema keys)
+      // 2. Fetch Feed Data 
       const { data, error } = await supabase
         .from('bets')
         .select(`
@@ -50,17 +50,12 @@ export default function ActionFeed() {
 
       if (data) {
         setFeed(data);
-        
-        // Find all unique week numbers
         const weeks = Array.from(new Set(data.map(b => b.games?.week_number)))
           .filter(w => w != null)
           .sort((a, b) => b - a); 
         
         setAvailableWeeks(weeks);
-        
-        if (weeks.length > 0) {
-          setSelectedWeek(weeks[0]);
-        }
+        if (weeks.length > 0) setSelectedWeek(weeks[0]);
       }
       setLoading(false);
     }
@@ -73,10 +68,7 @@ export default function ActionFeed() {
 
   const isCommissioner = profile?.role === 'admin' || profile?.display_name?.toUpperCase() === 'CJYES';
 
-  // Filter action by selected week
   const currentFeed = feed.filter(b => b.games?.week_number === selectedWeek);
-
-  // Data processing for the matrix
   const players = Array.from(new Set(currentFeed.map(b => b.profiles?.display_name || 'Unknown'))).sort();
 
   const uniqueGamesMap = new Map();
@@ -103,8 +95,6 @@ export default function ActionFeed() {
           </div>
 
           <div className="flex gap-4 items-center flex-wrap justify-center">
-            
-            {/* WALLET */}
             <div className="bg-[#1e293b] px-4 py-1.5 rounded-lg border border-brand-volt/20 text-right mr-2 shadow-sm">
               <p className="text-[8px] font-black text-gray-500 uppercase leading-none mb-1">Wallet</p>
               <p className="text-lg font-black text-brand-volt leading-none tracking-tighter">${balance.toFixed(2)}</p>
@@ -131,7 +121,6 @@ export default function ActionFeed() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 border-b-2 border-gray-300 pb-4 gap-4">
           <h1 className="text-3xl font-black uppercase italic tracking-tighter text-brand-dark">The Action Matrix</h1>
           
-          {/* STYLED WEEK SELECTOR UI */}
           <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
             {availableWeeks.map(w => (
               <button 
@@ -159,7 +148,6 @@ export default function ActionFeed() {
           <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden overflow-x-auto">
             <table className="text-left border-collapse min-w-full">
               
-              {/* THEMED TABLE HEADER */}
               <thead className="bg-[#0b0f19] text-white uppercase font-black text-[9px] md:text-[10px] tracking-widest border-b-4 border-brand-violet">
                 <tr>
                   <th className="px-4 py-3 whitespace-nowrap border-r border-gray-800 w-[140px] text-gray-400">Matchup</th>
@@ -172,15 +160,12 @@ export default function ActionFeed() {
                 </tr>
               </thead>
 
-              {/* TABLE BODY */}
               <tbody className="divide-y divide-gray-100">
                 {games.map((game, index) => {
                   const started = hasGameStarted(game.kickoff);
                   
                   return (
                     <tr key={game.id} className="hover:bg-slate-50 transition-colors">
-                      
-                      {/* GAME INFO COLUMN */}
                       <td className="px-4 py-3 border-r border-gray-100 whitespace-nowrap">
                         <div className="flex flex-col">
                           <span className="text-xs font-black text-brand-dark leading-tight">{game.away_abbr} @ {game.home_abbr}</span>
@@ -190,7 +175,6 @@ export default function ActionFeed() {
                         </div>
                       </td>
 
-                      {/* PLAYER BET COLUMNS */}
                       {players.map(player => {
                         const playerBets = currentFeed.filter(b => b.game_id === game.id && (b.profiles?.display_name || 'Unknown') === player);
 
@@ -216,16 +200,12 @@ export default function ActionFeed() {
                                     lineAmount = ' ML';
                                   } else if (bet.line_at_bet) {
                                     const numLine = parseFloat(bet.line_at_bet);
-                                    if (!isTotal && numLine > 0) {
-                                      lineAmount = ` +${numLine}`;
-                                    } else {
-                                      lineAmount = ` ${parseFloat(bet.line_at_bet)}`; // Trims trailing garbage from odds format
-                                    }
+                                    if (!isTotal && numLine > 0) lineAmount = ` +${numLine}`;
+                                    else lineAmount = ` ${parseFloat(bet.line_at_bet)}`;
                                   }
 
                                   const finalPickString = `${shortPick}${lineAmount}`;
 
-                                  // 1. Locked Game (HIDES THE WAGER AMOUNT)
                                   if (!started) {
                                     return (
                                       <div key={bet.id} className="text-gray-400 bg-gray-100 px-2 py-1.5 rounded text-sm w-full text-center flex justify-center items-center shadow-sm border border-gray-200">
@@ -234,13 +214,16 @@ export default function ActionFeed() {
                                     );
                                   }
 
-                                  // 2. Graded / Started Game
                                   let bgColor = "bg-white border-gray-200 text-brand-dark";
                                   let resultString = `$${parseFloat(bet.wager_amount).toFixed(0)}`;
 
+                                  // --- NEW PROFIT CALCULATION FOR WINS ---
                                   if (bet.status === 'won') {
                                     bgColor = "bg-green-50 border-green-400 text-green-700 shadow-sm";
-                                    resultString = `+$${parseFloat(bet.wager_amount).toFixed(0)}`; 
+                                    const numOdds = parseFloat(bet.odds) || -110;
+                                    const amount = parseFloat(bet.wager_amount);
+                                    const profit = numOdds > 0 ? (amount * numOdds) / 100 : amount / (Math.abs(numOdds) / 100);
+                                    resultString = `+$${profit.toFixed(0)}`; 
                                   } else if (bet.status === 'lost') {
                                     bgColor = "bg-red-50 border-red-300 text-red-700";
                                     resultString = `-$${parseFloat(bet.wager_amount).toFixed(0)}`;

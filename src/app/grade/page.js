@@ -55,10 +55,15 @@ export default function GradingRoom() {
         let isPush = false; 
 
         // THE MATH ENGINE
+        // THE MATH ENGINE
         if (bet.bet_type === 'moneyline') {
-          const winner = home > away ? game.home_team : (away > home ? game.away_team : 'Tie');
-          if (bet.selection === winner) isWinner = true;
-          else if (winner === 'Tie') isPush = true; 
+          if (home > away) {
+            if (bet.selection === game.home_team || bet.selection === game.home_abbr) isWinner = true;
+          } else if (away > home) {
+            if (bet.selection === game.away_team || bet.selection === game.away_abbr) isWinner = true;
+          } else {
+            isPush = true; // Tie game
+          }
         } 
         else if (bet.bet_type === 'spread') {
           const betLine = parseFloat(bet.line_at_bet);
