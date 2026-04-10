@@ -15,26 +15,21 @@ export default function Leaderboard() {
   const [selectedView, setSelectedView] = useState('Dashboard'); 
   const [loading, setLoading] = useState(true);
   
-  // Nav Bar State
   const [user, setUser] = useState(null);
   const [currentUserProfile, setCurrentUserProfile] = useState(null);
   const [balance, setBalance] = useState(0);
 
-  // Pure Profit Calculator
   const calculateProfit = (wager, oddsStr) => {
     const amount = parseFloat(wager);
     if (isNaN(amount) || amount <= 0) return 0;
-    
     let odds = parseFloat(oddsStr);
-    if (isNaN(odds)) odds = -110; // Default Vegas juice
-
+    if (isNaN(odds)) odds = -110;
     if (odds > 0) return (amount * odds) / 100;
     return amount / (Math.abs(odds) / 100);
   };
 
   useEffect(() => {
     async function fetchAllData() {
-      // 1. Get current user for Nav
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setUser(session.user);
@@ -45,60 +40,55 @@ export default function Leaderboard() {
         }
       }
 
-      // 2. Fetch Weeks from Games
       const { data: allGames } = await supabase.from('games').select('week_number');
       if (allGames) {
          const weeks = [...new Set(allGames.map(g => g.week_number).filter(Boolean))].sort((a, b) => a - b);
          setAvailableWeeks(weeks);
       }
 
-      // 3. Fetch ALL Profiles and ALL Bets
       const { data: profilesData } = await supabase.from('profiles').select('*');
-      const { data: betsData } = await supabase.from('bets').select(`
-        user_id, wager_amount, odds, status, 
-        games (week_number)
-      `);
+      const { data: betsData } = await supabase.from('bets').select(`user_id, wager_amount, odds, status, games (week_number)`);
 
       if (profilesData) setProfiles(profilesData);
       if (betsData) setBets(betsData);
-      
       setLoading(false);
     }
     fetchAllData();
   }, []);
 
-  // --- THE NEW GROSS WINNINGS LOGIC ---
+  // HYBRID STANDINGS LOGIC
   useEffect(() => {
     if (!profiles.length) return;
 
     let processedStandings = profiles.map(p => {
-      let totalWinnings = 0;
+      // OVERALL VIEW: Purely the size of their wallet
+      if (selectedView === 'Dashboard') {
+        return {
+          user_id: p.id,
+          display_name: p.display_name,
+          score: p.balance || 0,
+          isWallet: true
+        };
+      } 
       
-      // Isolate bets for this specific user
-      const userBets = bets.filter(b => b.user_id === p.id);
-
+      // WEEKLY VIEW: Pure profit won on that specific week's games
+      let weekProfit = 0;
+      const userBets = bets.filter(b => b.user_id === p.id && b.games?.week_number === parseInt(selectedView));
+      
       userBets.forEach(bet => {
-        // ONLY tally points if the bet was officially graded as a 'won'
         if (bet.status === 'won') {
-          const isDashboard = selectedView === 'Dashboard';
-          const isMatchingWeek = bet.games?.week_number === parseInt(selectedView);
-
-          // Tally if we are on the overall dashboard, OR if the bet matches the selected week
-          if (isDashboard || isMatchingWeek) {
-            totalWinnings += calculateProfit(bet.wager_amount, bet.odds);
-          }
+          weekProfit += calculateProfit(bet.wager_amount, bet.odds);
         }
-        // Lost, pending, and pushed bets simply add $0 (ignored)
       });
 
       return {
         user_id: p.id,
         display_name: p.display_name,
-        score: totalWinnings
+        score: weekProfit,
+        isWallet: false
       };
     });
 
-    // Sort strictly by highest score
     processedStandings.sort((a, b) => b.score - a.score);
     setStandings(processedStandings);
   }, [selectedView, bets, profiles]);
@@ -109,8 +99,6 @@ export default function Leaderboard() {
 
   return (
     <main className="min-h-screen bg-slate-200 text-brand-dark font-sans pb-12">
-      
-      {/* BRANDED NAV BAR */}
       <nav className="bg-[#0b0f19] p-4 border-b-2 border-brand-violet sticky top-0 z-40 shadow-xl">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-4">
@@ -123,9 +111,8 @@ export default function Leaderboard() {
           </div>
 
           <div className="flex gap-4 items-center flex-wrap justify-center">
-            {/* WALLET */}
             <div className="bg-[#1e293b] px-4 py-1.5 rounded-lg border border-brand-volt/20 text-right mr-2 shadow-sm">
-              <p className="text-[8px] font-black text-gray-500 uppercase leading-none mb-1">Wallet</p>
+              <p className="text-[8px] font-black text-gray-500 uppercase leading-none mb-1">Bankroll</p>
               <p className="text-lg font-black text-brand-volt leading-none tracking-tighter">${balance.toFixed(2)}</p>
             </div>
 
@@ -137,7 +124,6 @@ export default function Leaderboard() {
               </>
             )}
             <a href="/feed" className="text-[10px] font-black text-white uppercase hover:text-brand-volt transition-colors">Action Feed</a>
-            <a href="YOUR_GOOGLE_FORM_LINK" target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-gray-400 uppercase hover:text-brand-volt transition-colors">Feedback</a>
             <a href="/my-bets" className="bg-brand-violet text-white px-4 py-2 rounded font-black uppercase text-[10px] hover:bg-white hover:text-brand-violet transition-colors shadow-md">My Slips</a>
             <button onClick={() => supabase.auth.signOut().then(() => window.location.reload())} className="text-[9px] text-gray-500 font-bold uppercase border-l border-gray-800 pl-4 hover:text-red-400 transition-colors">Sign Out</button>
           </div>
@@ -145,7 +131,6 @@ export default function Leaderboard() {
       </nav>
 
       <div className="max-w-4xl mx-auto p-4 md:p-8 mt-4">
-        
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 border-b-2 border-gray-300 pb-4 gap-4">
           <h1 className="text-3xl font-black uppercase italic tracking-tighter text-brand-dark">League Standings</h1>
           
@@ -153,12 +138,10 @@ export default function Leaderboard() {
             <button 
               onClick={() => setSelectedView('Dashboard')} 
               className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all shadow-sm ${
-                selectedView === 'Dashboard' 
-                ? 'bg-brand-violet text-white shadow-md' 
-                : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-violet hover:text-brand-violet'
+                selectedView === 'Dashboard' ? 'bg-brand-violet text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-violet hover:text-brand-violet'
               }`}
             >
-              Overall Winnings
+              Overall Bankroll
             </button>
             
             {availableWeeks.map(week => (
@@ -166,9 +149,7 @@ export default function Leaderboard() {
                 key={week}
                 onClick={() => setSelectedView(week)}
                 className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all shadow-sm ${
-                  selectedView === week 
-                  ? 'bg-brand-violet text-white shadow-md' 
-                  : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-violet hover:text-brand-violet'
+                  selectedView === week ? 'bg-brand-violet text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-violet hover:text-brand-violet'
                 }`}
               >
                 Week {week}
@@ -178,13 +159,11 @@ export default function Leaderboard() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-200">
-          
-          {/* THEMED TABLE HEADER */}
           <div className="bg-[#0b0f19] text-white p-4 flex justify-between items-center font-black uppercase tracking-widest text-[10px] md:text-xs border-b-4 border-brand-violet">
             <span className="w-8 md:w-12 text-center text-gray-400">Rnk</span>
             <span className="flex-1 pl-2">Player</span>
             <span className="w-32 text-right text-brand-volt">
-              {selectedView === 'Dashboard' ? 'Total Won' : `Week ${selectedView} Won`}
+              {selectedView === 'Dashboard' ? 'Current Stack' : `Week ${selectedView} Profit`}
             </span>
           </div>
           
@@ -193,21 +172,26 @@ export default function Leaderboard() {
               <p className="p-8 text-center text-gray-400 font-bold uppercase italic">No scores recorded yet.</p>
             ) : (
               standings.map((row, index) => {
-                // Formatting: Bright green if they have points, gray if they are sitting at $0
-                const hasPoints = row.score > 0;
-                const scoreColor = hasPoints ? 'text-green-600' : 'text-gray-400';
+                // Color Logic: For Bankroll, green if > 100. For Weekly, green if > 0.
+                let scoreColor = 'text-gray-400';
+                if (row.isWallet) {
+                  if (row.score > 100) scoreColor = 'text-green-600';
+                  else if (row.score < 100) scoreColor = 'text-red-500';
+                  else scoreColor = 'text-gray-600';
+                } else {
+                  scoreColor = row.score > 0 ? 'text-green-600' : 'text-gray-400';
+                }
 
                 return (
                   <div key={index} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors">
                     <div className="w-8 md:w-12 text-center font-black text-lg md:text-xl text-gray-400">
-                      {index === 0 && hasPoints ? <span className="text-brand-volt drop-shadow-sm text-2xl">🏆</span> : index + 1}
+                      {index === 0 && row.score > 0 ? <span className="text-brand-volt drop-shadow-sm text-2xl">🏆</span> : index + 1}
                     </div>
                     
                     <div className="flex-1 pl-2 font-black text-brand-dark uppercase tracking-tighter text-sm md:text-lg truncate">
                       {row.display_name}
                     </div>
                     
-                    {/* The Clean Winnings Score */}
                     <div className={`w-32 text-right text-xl md:text-2xl font-black tracking-tighter ${scoreColor}`}>
                       ${parseFloat(row.score).toFixed(2)}
                     </div>

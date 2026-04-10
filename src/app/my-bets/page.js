@@ -14,12 +14,10 @@ export default function MyBets() {
   
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [balance, setBalance] = useState(0); // Restored the True Bankroll state
+  
   const [availableWeeks, setAvailableWeeks] = useState([]);
   const [activeWeek, setActiveWeek] = useState(null);
-
-  // Dynamic Wallet State
-  const [availableAmmo, setAvailableAmmo] = useState(100);
-  const [totalWinnings, setTotalWinnings] = useState(0);
 
   useEffect(() => {
     async function fetchUserBets() {
@@ -30,7 +28,10 @@ export default function MyBets() {
         if (session?.user) {
           setUser(session.user);
           const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-          if (prof) setProfile(prof);
+          if (prof) {
+            setProfile(prof);
+            setBalance(prof.balance || 0); // Sync to live bankroll
+          }
 
           const { data: allGames } = await supabase.from('games').select('week_number');
           if (allGames) {
@@ -70,27 +71,6 @@ export default function MyBets() {
     fetchUserBets();
   }, []);
 
-  // --- DYNAMIC WALLET CALCULATOR ---
-  useEffect(() => {
-    if (activeWeek !== null && bets.length > 0) {
-      const betsThisWeek = bets.filter(b => b.games?.week_number === activeWeek);
-      const spentThisWeek = betsThisWeek.reduce((sum, bet) => sum + parseFloat(bet.wager_amount), 0);
-      setAvailableAmmo(Math.max(0, 100 - spentThisWeek));
-
-      const wonBets = bets.filter(b => b.status === 'won');
-      const totalWon = wonBets.reduce((sum, bet) => {
-        const odds = parseFloat(bet.odds) || -110;
-        const amt = parseFloat(bet.wager_amount);
-        const profit = odds > 0 ? (amt * odds) / 100 : amt / (Math.abs(odds) / 100);
-        return sum + profit;
-      }, 0);
-      setTotalWinnings(totalWon);
-    } else {
-      setAvailableAmmo(100);
-      setTotalWinnings(0);
-    }
-  }, [activeWeek, bets]);
-
   const isCommissioner = profile?.role === 'admin' || profile?.display_name?.toUpperCase() === 'CJYES';
 
   if (loading) return <main className="min-h-screen bg-slate-200 p-8 text-center font-black uppercase italic text-gray-400 text-xl tracking-widest mt-20">Loading Slips...</main>;
@@ -124,15 +104,10 @@ export default function MyBets() {
 
           <div className="flex gap-4 items-center flex-wrap justify-center">
             
-            <div className="flex gap-2 mr-2">
-              <div className="bg-[#1e293b] px-3 py-1.5 rounded-lg border border-gray-700 text-right shadow-sm">
-                <p className="text-[8px] font-black text-gray-500 uppercase leading-none mb-1">Wk {activeWeek || '?'} Ammo</p>
-                <p className="text-base font-black text-white leading-none tracking-tighter">${availableAmmo.toFixed(2)}</p>
-              </div>
-              <div className="bg-brand-volt/10 px-3 py-1.5 rounded-lg border border-brand-volt/30 text-right shadow-sm">
-                <p className="text-[8px] font-black text-brand-volt uppercase leading-none mb-1 opacity-80">Total Won</p>
-                <p className="text-base font-black text-brand-volt leading-none tracking-tighter">${totalWinnings.toFixed(2)}</p>
-              </div>
+            {/* CLEAN BANKROLL DISPLAY */}
+            <div className="bg-[#1e293b] px-4 py-1.5 rounded-lg border border-brand-volt/20 text-right mr-2 shadow-sm">
+              <p className="text-[8px] font-black text-gray-500 uppercase leading-none mb-1">Bankroll</p>
+              <p className="text-lg font-black text-brand-volt leading-none tracking-tighter">${balance.toFixed(2)}</p>
             </div>
 
             {isCommissioner && (

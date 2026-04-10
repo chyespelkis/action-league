@@ -20,11 +20,7 @@ export default function Home() {
   
   const [availableWeeks, setAvailableWeeks] = useState([]);
   const [activeWeek, setActiveWeek] = useState(null);
-
-  // New Dynamic Wallet State
-  const [myBets, setMyBets] = useState([]);
-  const [availableAmmo, setAvailableAmmo] = useState(100);
-  const [totalWinnings, setTotalWinnings] = useState(0);
+  const [balance, setBalance] = useState(0);
 
   // Auth State
   const [email, setEmail] = useState("");
@@ -35,10 +31,10 @@ export default function Home() {
 
   const calculateProfit = (wager, oddsStr) => {
     const amount = parseFloat(wager);
-    if (isNaN(amount) || amount <= 0) return { profit: "0.00", total: "0.00", rawProfit: 0 };
+    if (isNaN(amount) || amount <= 0) return { profit: "0.00", total: "0.00" };
     let odds = parseFloat(oddsStr) || -110;
     let profit = odds > 0 ? (amount * odds) / 100 : amount / (Math.abs(odds) / 100);
-    return { profit: profit.toFixed(2), total: (amount + profit).toFixed(2), rawProfit: profit };
+    return { profit: profit.toFixed(2), total: (amount + profit).toFixed(2) };
   };
 
   useEffect(() => {
@@ -48,15 +44,10 @@ export default function Home() {
       if (session) {
         setUser(session.user);
         const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-        if (prof) setProfile(prof);
-        
-        // Fetch all user's bets to calculate their dynamic wallet
-        const { data: userBets } = await supabase
-          .from('bets')
-          .select('wager_amount, odds, status, games!fk_bets_games(week_number)')
-          .eq('user_id', session.user.id);
-          
-        if (userBets) setMyBets(userBets);
+        if (prof) {
+          setProfile(prof);
+          setBalance(prof.balance || 0);
+        }
 
         const { data: g } = await supabase.from('games').select('*').eq('status', 'pending').order('kickoff', { ascending: true });
         if (g) {
@@ -84,24 +75,6 @@ export default function Home() {
     }).subscribe();
     return () => supabase.removeChannel(channel);
   }, []);
-
-  // --- DYNAMIC WALLET CALCULATOR ---
-  useEffect(() => {
-    if (activeWeek !== null && myBets.length > 0) {
-      // 1. Calculate how much ammo they have left for the ACTIVE week
-      const betsThisWeek = myBets.filter(b => b.games?.week_number === activeWeek);
-      const spentThisWeek = betsThisWeek.reduce((sum, bet) => sum + parseFloat(bet.wager_amount), 0);
-      setAvailableAmmo(Math.max(0, 100 - spentThisWeek));
-
-      // 2. Calculate their all-time total winnings
-      const wonBets = myBets.filter(b => b.status === 'won');
-      const totalWon = wonBets.reduce((sum, bet) => sum + calculateProfit(bet.wager_amount, bet.odds).rawProfit, 0);
-      setTotalWinnings(totalWon);
-    } else {
-      setAvailableAmmo(100); // Default if no bets placed
-      setTotalWinnings(0);
-    }
-  }, [activeWeek, myBets]);
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -145,9 +118,9 @@ export default function Home() {
     if (!betAmount || !selectedBet || !user) return;
     const wager = parseFloat(betAmount);
 
-    // NEW DYNAMIC LIMIT CHECKS
-    if (wager > availableAmmo) {
-      alert(`❌ INSUFFICIENT AMMO: You only have $${availableAmmo.toFixed(2)} left to risk for Week ${activeWeek}.`);
+    // TRUE BANKROLL LIMIT CHECK
+    if (wager > balance) {
+      alert(`❌ INSUFFICIENT FUNDS: You only have $${balance.toFixed(2)} in your bankroll.`);
       return;
     }
 
@@ -168,6 +141,9 @@ export default function Home() {
       }]);
 
       if (insertError) throw insertError;
+
+      // Update their actual wallet in the database immediately
+      await supabase.from('profiles').update({ balance: balance - wager }).eq('id', user.id);
 
       // Whale Alert
       if (wager >= 50) {
@@ -245,17 +221,10 @@ export default function Home() {
           </div>
 
           <div className="flex gap-4 items-center flex-wrap justify-center">
-            
-            {/* NEW DUAL-WALLET DISPLAY */}
-            <div className="flex gap-2 mr-2">
-              <div className="bg-[#1e293b] px-3 py-1.5 rounded-lg border border-gray-700 text-right shadow-sm">
-                <p className="text-[8px] font-black text-gray-500 uppercase leading-none mb-1">Wk {activeWeek || '?'} Ammo</p>
-                <p className="text-base font-black text-white leading-none tracking-tighter">${availableAmmo.toFixed(2)}</p>
-              </div>
-              <div className="bg-brand-volt/10 px-3 py-1.5 rounded-lg border border-brand-volt/30 text-right shadow-sm">
-                <p className="text-[8px] font-black text-brand-volt uppercase leading-none mb-1 opacity-80">Total Won</p>
-                <p className="text-base font-black text-brand-volt leading-none tracking-tighter">${totalWinnings.toFixed(2)}</p>
-              </div>
+            {/* CLEAN WALLET DISPLAY */}
+            <div className="bg-[#1e293b] px-4 py-1.5 rounded-lg border border-brand-volt/20 text-right mr-2 shadow-sm">
+              <p className="text-[8px] font-black text-gray-500 uppercase leading-none mb-1">Bankroll</p>
+              <p className="text-lg font-black text-brand-volt leading-none tracking-tighter">${balance.toFixed(2)}</p>
             </div>
 
             {isCommissioner && (
@@ -339,7 +308,6 @@ export default function Home() {
                         <div>Total</div>
                       </div>
 
-                      {/* AWAY ROW */}
                       <div className="grid grid-cols-[50px_1fr_1fr_1fr] md:grid-cols-[70px_1fr_1fr_1fr] gap-2 md:gap-3 items-center mb-3">
                         <div className="border-l-4 border-gray-300 pl-2">
                           <span className="font-black text-sm md:text-lg text-brand-dark uppercase">{game.away_abbr}</span>
@@ -361,7 +329,6 @@ export default function Home() {
                         </button>
                       </div>
 
-                      {/* HOME ROW */}
                       <div className="grid grid-cols-[50px_1fr_1fr_1fr] md:grid-cols-[70px_1fr_1fr_1fr] gap-2 md:gap-3 items-center">
                         <div className="border-l-4 border-brand-violet pl-2">
                           <span className="font-black text-sm md:text-lg text-brand-violet uppercase">{game.home_abbr}</span>
@@ -420,7 +387,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* BETTING MODAL */}
       {selectedBet && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white border border-gray-200 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
@@ -443,10 +409,10 @@ export default function Home() {
               <div className="flex justify-between items-end mb-4">
                 <label className="block text-[11px] font-black text-gray-400 uppercase tracking-widest">Wager Amount ($)</label>
                 
-                {/* PROMINENT AMMO DISPLAY */}
+                {/* CURRENT BANKROLL DISPLAY */}
                 <div className="bg-brand-violet/10 px-3 py-1.5 rounded border border-brand-violet/20 text-right">
-                  <span className="block text-[8px] font-black text-brand-violet uppercase tracking-widest mb-0.5">Remaining Ammo</span>
-                  <span className="block text-sm font-black text-brand-dark leading-none">${availableAmmo.toFixed(2)}</span>
+                  <span className="block text-[8px] font-black text-brand-violet uppercase tracking-widest mb-0.5">Avail Bankroll</span>
+                  <span className="block text-sm font-black text-brand-dark leading-none">${balance.toFixed(2)}</span>
                 </div>
               </div>
               
@@ -460,9 +426,9 @@ export default function Home() {
                   className="w-full text-5xl font-black border-b-4 border-gray-100 bg-transparent text-brand-dark focus:border-brand-violet outline-none pb-2 pr-16" 
                 />
                 
-                {/* MAX BUTTON */}
+                {/* MAX BUTTON - PUSHES ENTIRE WALLET */}
                 <button 
-                  onClick={() => setBetAmount(availableAmmo.toString())}
+                  onClick={() => setBetAmount(balance.toString())}
                   className="absolute right-0 bottom-4 bg-gray-200 text-gray-600 hover:bg-brand-violet hover:text-white px-3 py-1.5 rounded font-black text-[10px] uppercase tracking-widest transition-colors shadow-sm"
                 >
                   Max
@@ -486,7 +452,7 @@ export default function Home() {
                 <button onClick={() => setSelectedBet(null)} className="w-1/3 text-gray-400 hover:text-brand-dark font-black uppercase text-xs transition-colors">Cancel</button>
                 <button 
                   onClick={handlePlaceBet} 
-                  disabled={isSubmitting || parseFloat(betAmount) > availableAmmo || !betAmount || parseFloat(betAmount) <= 0} 
+                  disabled={isSubmitting || parseFloat(betAmount) > balance || !betAmount || parseFloat(betAmount) <= 0} 
                   className="w-2/3 bg-brand-dark text-brand-volt py-4 rounded-xl font-black uppercase tracking-widest hover:bg-[#1e293b] transition-colors shadow-lg active:scale-95 disabled:opacity-50 disabled:bg-gray-300 disabled:text-gray-500 disabled:shadow-none"
                 >
                   {isSubmitting ? 'Locking...' : 'Lock It In'}
