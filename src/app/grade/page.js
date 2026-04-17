@@ -13,13 +13,16 @@ export default function GradingRoom() {
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [scores, setScores] = useState({});
+  
+  // Rollover State
+  const [rolloverWeek, setRolloverWeek] = useState("");
+  const [isProcessingRollover, setIsProcessingRollover] = useState(false);
 
   useEffect(() => {
     async function checkAuthAndFetch() {
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session) {
-        // Fetch the user's profile to verify they are an admin
         const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
         
         if (prof?.role === 'admin' || prof?.display_name?.toUpperCase() === 'CJYES') {
@@ -43,10 +46,8 @@ export default function GradingRoom() {
     if (!gameScores || gameScores.home === undefined || gameScores.away === undefined) return alert("Enter both scores first!");
     const { home, away } = gameScores;
 
-    // 1. Finalize the game score
     await supabase.from('games').update({ home_score: home, away_score: away, status: 'final' }).eq('id', game.id);
     
-    // 2. Fetch all pending bets for this specific game
     const { data: bets } = await supabase.from('bets').select('*').eq('game_id', game.id).eq('status', 'pending');
 
     if (bets && bets.length > 0) {
@@ -54,15 +55,13 @@ export default function GradingRoom() {
         let isWinner = false;
         let isPush = false; 
 
-        // THE MATH ENGINE
-        // THE MATH ENGINE
         if (bet.bet_type === 'moneyline') {
           if (home > away) {
             if (bet.selection === game.home_team || bet.selection === game.home_abbr) isWinner = true;
           } else if (away > home) {
             if (bet.selection === game.away_team || bet.selection === game.away_abbr) isWinner = true;
           } else {
-            isPush = true; // Tie game
+            isPush = true;
           }
         } 
         else if (bet.bet_type === 'spread') {
@@ -84,40 +83,55 @@ export default function GradingRoom() {
           else if (totalScore === gameTotal) isPush = true;
         }
 
-        // PROCESSING THE PAYOUT (Now correctly pointed to profiles)
         if (isWinner) {
           const numOdds = parseFloat(bet.odds);
           let profit = numOdds > 0 ? bet.wager_amount * (numOdds / 100) : bet.wager_amount * (100 / Math.abs(numOdds));
-          const payout = bet.wager_amount + profit; // Returns stake + profit
+          const payout = bet.wager_amount + profit;
 
-          // Get the user's current LIVE profile balance
           const { data: profile } = await supabase.from('profiles').select('balance').eq('id', bet.user_id).single();
-          
           if (profile) {
-            // Update the main profile wallet
             await supabase.from('profiles').update({ balance: profile.balance + payout }).eq('id', bet.user_id);
           }
           await supabase.from('bets').update({ status: 'won' }).eq('id', bet.id);
         } 
         else if (isPush) {
-          // REFUND THE WAGER
           const { data: profile } = await supabase.from('profiles').select('balance').eq('id', bet.user_id).single();
-          
           if (profile) {
             await supabase.from('profiles').update({ balance: profile.balance + bet.wager_amount }).eq('id', bet.user_id);
           }
           await supabase.from('bets').update({ status: 'push' }).eq('id', bet.id);
         } 
         else {
-          // LOSS: Do not refund wallet, just mark ticket lost
           await supabase.from('bets').update({ status: 'lost' }).eq('id', bet.id);
         }
       }
     }
     alert(`${game.away_team} @ ${game.home_team} has been officially graded!`);
-    
-    // Remove game from the commissioner's pending list visually
     setGames(games.filter(g => g.id !== game.id));
+  }
+
+  // --- NEW ROLLOVER FUNCTION ---
+  async function processWeeklyRollover() {
+    if (!rolloverWeek) return alert("Please enter the week number you want to close out.");
+    
+    const weekNum = parseInt(rolloverWeek);
+    const confirmMessage = `WARNING: You are about to deposit the Weekly Stimulus for Week ${weekNum}. This will add money to players' active wallets based on what they wagered in Week ${weekNum}.\n\nAre you sure you want to proceed?`;
+    
+    if (window.confirm(confirmMessage)) {
+      setIsProcessingRollover(true);
+      try {
+        const { error } = await supabase.rpc('process_weekly_stimulus', { completed_week: weekNum });
+        if (error) throw error;
+        
+        alert(`✅ SUCCESS: Week ${weekNum} stimulus checks have been deposited! Wallets are reloaded.`);
+        setRolloverWeek("");
+      } catch (err) {
+        console.error(err);
+        alert(`Error processing rollover: ${err.message}`);
+      } finally {
+        setIsProcessingRollover(false);
+      }
+    }
   }
 
   if (authLoading) return <main className="p-8 text-center font-black uppercase italic text-brand-dark">Verifying Credentials...</main>;
@@ -139,7 +153,6 @@ export default function GradingRoom() {
   return (
     <main className="min-h-screen bg-slate-200 text-brand-dark font-sans pb-12">
       
-      {/* BRANDED NAV BAR */}
       <nav className="bg-[#0b0f19] p-4 border-b-2 border-brand-violet sticky top-0 z-40 shadow-xl mb-8">
         <div className="max-w-4xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -156,7 +169,7 @@ export default function GradingRoom() {
           <p className="text-sm font-bold text-gray-500 uppercase mt-1">Careful. Grading is permanent.</p>
         </div>
         
-        <div className="grid gap-6">
+        <div className="grid gap-6 mb-12">
           {games.length === 0 ? (
             <div className="text-center p-12 bg-white rounded-2xl shadow-xl border border-gray-200">
                <p className="text-gray-400 font-bold uppercase italic text-lg tracking-widest">The board is clean.</p>
@@ -206,6 +219,42 @@ export default function GradingRoom() {
             })
           )}
         </div>
+
+        {/* --- NEW LEAGUE MANAGEMENT SECTION --- */}
+        <div className="mb-8 border-b-2 border-gray-300 pb-4">
+          <h1 className="text-3xl font-black uppercase italic tracking-tighter text-brand-dark">League Management</h1>
+          <p className="text-sm font-bold text-gray-500 uppercase mt-1">End of week processing</p>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex-1">
+            <h3 className="font-black uppercase tracking-tighter text-xl text-brand-dark">Deposit Weekly Stimulus</h3>
+            <p className="text-xs font-bold text-gray-500 uppercase mt-2 leading-relaxed">
+              Run this after all games for a week are officially graded. This will scan all tickets for the specified week and deposit matching funds (up to $100) directly into players' live wallets.
+            </p>
+          </div>
+          
+          <div className="flex flex-col items-end gap-3 w-full md:w-auto">
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Close Week:</span>
+              <input 
+                type="number" 
+                placeholder="Ex: 1" 
+                value={rolloverWeek}
+                onChange={(e) => setRolloverWeek(e.target.value)}
+                className="w-24 border-2 border-gray-200 p-3 rounded-xl font-black text-center focus:border-brand-violet outline-none text-lg" 
+              />
+            </div>
+            <button 
+              onClick={processWeeklyRollover}
+              disabled={isProcessingRollover}
+              className="w-full bg-brand-violet text-white px-6 py-4 rounded-xl font-black uppercase tracking-widest hover:bg-[#0b0f19] shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:bg-gray-400"
+            >
+              {isProcessingRollover ? 'Processing...' : 'Run Rollover'}
+            </button>
+          </div>
+        </div>
+
       </div>
     </main>
   );
