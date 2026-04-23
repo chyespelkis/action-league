@@ -56,39 +56,33 @@ export default function Leaderboard() {
     fetchAllData();
   }, []);
 
-  // HYBRID STANDINGS LOGIC
+  // OVERALL GROSS WINNINGS LOGIC
   useEffect(() => {
     if (!profiles.length) return;
 
     let processedStandings = profiles.map(p => {
-      // OVERALL VIEW: Purely the size of their wallet
-      if (selectedView === 'Dashboard') {
-        return {
-          user_id: p.id,
-          display_name: p.display_name,
-          score: p.balance || 0,
-          isWallet: true
-        };
-      } 
+      let totalProfit = 0;
       
-      // WEEKLY VIEW: Pure profit won on that specific week's games
-      let weekProfit = 0;
-      const userBets = bets.filter(b => b.user_id === p.id && b.games?.week_number === parseInt(selectedView));
+      const userBets = bets.filter(b => b.user_id === p.id);
       
       userBets.forEach(bet => {
         if (bet.status === 'won') {
-          weekProfit += calculateProfit(bet.wager_amount, bet.odds);
+          // If we are looking at a specific week, only count bets from that week
+          if (selectedView !== 'Dashboard' && bet.games?.week_number !== parseInt(selectedView)) {
+            return; 
+          }
+          totalProfit += calculateProfit(bet.wager_amount, bet.odds);
         }
       });
 
       return {
         user_id: p.id,
         display_name: p.display_name,
-        score: weekProfit,
-        isWallet: false
+        score: totalProfit
       };
     });
 
+    // Sort descending by highest gross profit
     processedStandings.sort((a, b) => b.score - a.score);
     setStandings(processedStandings);
   }, [selectedView, bets, profiles]);
@@ -141,7 +135,7 @@ export default function Leaderboard() {
                 selectedView === 'Dashboard' ? 'bg-brand-violet text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-violet hover:text-brand-violet'
               }`}
             >
-              Overall Bankroll
+              Total Winnings
             </button>
             
             {availableWeeks.map(week => (
@@ -163,7 +157,7 @@ export default function Leaderboard() {
             <span className="w-8 md:w-12 text-center text-gray-400">Rnk</span>
             <span className="flex-1 pl-2">Player</span>
             <span className="w-32 text-right text-brand-volt">
-              {selectedView === 'Dashboard' ? 'Current Stack' : `Week ${selectedView} Profit`}
+              {selectedView === 'Dashboard' ? 'Total Won' : `Wk ${selectedView} Won`}
             </span>
           </div>
           
@@ -172,20 +166,13 @@ export default function Leaderboard() {
               <p className="p-8 text-center text-gray-400 font-bold uppercase italic">No scores recorded yet.</p>
             ) : (
               standings.map((row, index) => {
-                // Color Logic: For Bankroll, green if > 100. For Weekly, green if > 0.
-                let scoreColor = 'text-gray-400';
-                if (row.isWallet) {
-                  if (row.score > 100) scoreColor = 'text-green-600';
-                  else if (row.score < 100) scoreColor = 'text-red-500';
-                  else scoreColor = 'text-gray-600';
-                } else {
-                  scoreColor = row.score > 0 ? 'text-green-600' : 'text-gray-400';
-                }
+                const hasWonMoney = row.score > 0;
+                const scoreColor = hasWonMoney ? 'text-green-600' : 'text-gray-400';
 
                 return (
                   <div key={index} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors">
                     <div className="w-8 md:w-12 text-center font-black text-lg md:text-xl text-gray-400">
-                      {index === 0 && row.score > 0 ? <span className="text-brand-volt drop-shadow-sm text-2xl">🏆</span> : index + 1}
+                      {index === 0 && hasWonMoney ? <span className="text-brand-volt drop-shadow-sm text-2xl">🏆</span> : index + 1}
                     </div>
                     
                     <div className="flex-1 pl-2 font-black text-brand-dark uppercase tracking-tighter text-sm md:text-lg truncate">

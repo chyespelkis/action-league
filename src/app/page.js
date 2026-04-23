@@ -22,6 +22,9 @@ export default function Home() {
   const [activeWeek, setActiveWeek] = useState(null);
   const [balance, setBalance] = useState(0);
 
+  // Splash Screen State
+  const [splashData, setSplashData] = useState(null);
+
   // Auth State
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,10 +34,10 @@ export default function Home() {
 
   const calculateProfit = (wager, oddsStr) => {
     const amount = parseFloat(wager);
-    if (isNaN(amount) || amount <= 0) return { profit: "0.00", total: "0.00" };
+    if (isNaN(amount) || amount <= 0) return { profit: "0.00", total: "0.00", rawProfit: 0 };
     let odds = parseFloat(oddsStr) || -110;
     let profit = odds > 0 ? (amount * odds) / 100 : amount / (Math.abs(odds) / 100);
-    return { profit: profit.toFixed(2), total: (amount + profit).toFixed(2) };
+    return { profit: profit.toFixed(2), total: (amount + profit).toFixed(2), rawProfit: profit };
   };
 
   useEffect(() => {
@@ -57,14 +60,86 @@ export default function Home() {
           if (weeks.length > 0) setActiveWeek(weeks[0]);
         }
         
-        const { data: bets } = await supabase.from('bets').select('wager_amount').eq('status', 'pending');
-        if (bets && bets.length > 0) {
-          const top = Math.max(...bets.map(b => b.wager_amount), 0);
-          setStats({ topWhale: top, activeBets: bets.length });
+        const { data: activeBets } = await supabase.from('bets').select('wager_amount').eq('status', 'pending');
+        if (activeBets && activeBets.length > 0) {
+          const top = Math.max(...activeBets.map(b => b.wager_amount), 0);
+          setStats({ topWhale: top, activeBets: activeBets.length });
         }
         
         const { data: msgs } = await supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(6);
         setRecentMessages(msgs || []);
+
+        // --- SPLASH SCREEN CALCULATOR ---
+        if (typeof window !== 'undefined') {
+          // Find the most recently completed week based on graded games
+          const { data: finalGames } = await supabase.from('games').select('week_number').eq('status', 'final');
+          if (finalGames && finalGames.length > 0) {
+            const completedWeeks = [...new Set(finalGames.map(game => game.week_number))].sort((a,b) => b-a);
+            const latestWeek = completedWeeks[0];
+            
+            const splashKey = `action_league_splash_week_${latestWeek}`;
+            if (!localStorage.getItem(splashKey)) {
+              
+              // Calculate the awards for this specific week
+              const { data: allGraded } = await supabase
+                .from('bets')
+                .select('wager_amount, odds, status, selection, line_at_bet, profiles!fk_bets_profiles(display_name), games!fk_bets_games(week_number)')
+                .neq('status', 'pending');
+
+              const weekBets = allGraded.filter(b => b.games?.week_number === latestWeek);
+              
+              if (weekBets.length > 0) {
+                let userStats = {};
+                let biggestHit = { name: '', amount: 0, pick: '' };
+
+                weekBets.forEach(bet => {
+                  const name = bet.profiles?.display_name || 'Unknown';
+                  if (!userStats[name]) userStats[name] = { grossProfit: 0, netProfit: 0 };
+                  
+                  const amount = parseFloat(bet.wager_amount);
+                  
+                  if (bet.status === 'won') {
+                    const profit = calculateProfit(amount, bet.odds).rawProfit;
+                    userStats[name].grossProfit += profit;
+                    userStats[name].netProfit += profit;
+                    
+                    // Track Biggest Hit
+                    if (profit > biggestHit.amount) {
+                      biggestHit = { 
+                        name, 
+                        amount: profit, 
+                        pick: `${bet.selection} ${bet.line_at_bet || ''}`.trim() 
+                      };
+                    }
+                  } else if (bet.status === 'lost') {
+                    userStats[name].netProfit -= amount;
+                  }
+                });
+
+                // Determine MVP and Toilet Bowl
+                let mvp = { name: 'No One', amount: 0 };
+                let toilet = { name: 'No One', amount: 0 };
+
+                Object.keys(userStats).forEach(name => {
+                  if (userStats[name].grossProfit > mvp.amount) {
+                    mvp = { name, amount: userStats[name].grossProfit };
+                  }
+                  if (userStats[name].netProfit < toilet.amount) {
+                    toilet = { name, amount: userStats[name].netProfit };
+                  }
+                });
+
+                setSplashData({
+                  week: latestWeek,
+                  mvp,
+                  toilet,
+                  biggestHit,
+                  storageKey: splashKey
+                });
+              }
+            }
+          }
+        }
       }
       setPageLoading(false);
     }
@@ -75,6 +150,11 @@ export default function Home() {
     }).subscribe();
     return () => supabase.removeChannel(channel);
   }, []);
+
+  const dismissSplash = () => {
+    localStorage.setItem(splashData.storageKey, 'true');
+    setSplashData(null);
+  };
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -118,7 +198,6 @@ export default function Home() {
     if (!betAmount || !selectedBet || !user) return;
     const wager = parseFloat(betAmount);
 
-    // TRUE BANKROLL LIMIT CHECK
     if (wager > balance) {
       alert(`❌ INSUFFICIENT FUNDS: You only have $${balance.toFixed(2)} in your bankroll.`);
       return;
@@ -142,10 +221,8 @@ export default function Home() {
 
       if (insertError) throw insertError;
 
-      // Update their actual wallet in the database immediately
       await supabase.from('profiles').update({ balance: balance - wager }).eq('id', user.id);
 
-      // Whale Alert
       if (wager >= 50) {
         const whaleMessages = [
           `${profile?.display_name || 'Someone'} JUST DROPPED A WHALE BET! 🐋💸`,
@@ -208,7 +285,61 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-200 text-brand-dark font-sans pb-12">
+    <main className="min-h-screen bg-slate-200 text-brand-dark font-sans pb-12 relative">
+      
+      {/* THE MORNING AFTER SPLASH SCREEN */}
+      {splashData && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+          <div className="bg-[#0b0f19] border-4 border-brand-violet rounded-3xl w-full max-w-lg overflow-hidden shadow-[0_0_50px_rgba(139,92,246,0.3)]">
+            <div className="p-8 text-center border-b border-gray-800">
+              <span className="text-brand-volt font-black uppercase tracking-[0.3em] text-[10px]">The Morning After</span>
+              <h2 className="text-4xl font-black uppercase italic tracking-tighter text-white mt-2">
+                Week {splashData.week} <br/>In The Books
+              </h2>
+            </div>
+            
+            <div className="p-8 space-y-6">
+              {/* MVP */}
+              <div className="bg-[#1e293b] p-4 rounded-xl border border-gray-700 flex justify-between items-center">
+                <div>
+                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">🏆 The Champ</p>
+                  <p className="text-xl font-black text-white uppercase italic">{splashData.mvp.name}</p>
+                </div>
+                <span className="text-2xl font-black text-green-500">+${splashData.mvp.amount.toFixed(0)}</span>
+              </div>
+
+              {/* WHALE */}
+              <div className="bg-[#1e293b] p-4 rounded-xl border border-gray-700 flex justify-between items-center">
+                <div>
+                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">🐋 Biggest Hit</p>
+                  <p className="text-lg font-black text-white uppercase italic">{splashData.biggestHit.name}</p>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase mt-0.5">{splashData.biggestHit.pick}</p>
+                </div>
+                <span className="text-xl font-black text-brand-volt">+${splashData.biggestHit.amount.toFixed(0)}</span>
+              </div>
+
+              {/* TOILET BOWL */}
+              <div className="bg-red-950/30 p-4 rounded-xl border border-red-900/50 flex justify-between items-center">
+                <div>
+                  <p className="text-[10px] text-red-500 font-black uppercase tracking-widest mb-1">🥶 Toilet Bowl (Net Loss)</p>
+                  <p className="text-lg font-black text-gray-300 uppercase italic">{splashData.toilet.name}</p>
+                </div>
+                <span className="text-xl font-black text-red-500">-${Math.abs(splashData.toilet.amount).toFixed(0)}</span>
+              </div>
+            </div>
+
+            <div className="p-6 bg-black">
+              <button 
+                onClick={dismissSplash} 
+                className="w-full bg-brand-violet text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-white hover:text-brand-violet transition-colors shadow-lg active:scale-95"
+              >
+                Enter Week {splashData.week + 1}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <nav className="bg-[#0b0f19] p-4 border-b-2 border-brand-violet sticky top-0 z-40 shadow-xl">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-4">
@@ -221,7 +352,6 @@ export default function Home() {
           </div>
 
           <div className="flex gap-4 items-center flex-wrap justify-center">
-            {/* CLEAN WALLET DISPLAY */}
             <div className="bg-[#1e293b] px-4 py-1.5 rounded-lg border border-brand-volt/20 text-right mr-2 shadow-sm">
               <p className="text-[8px] font-black text-gray-500 uppercase leading-none mb-1">Bankroll</p>
               <p className="text-lg font-black text-brand-volt leading-none tracking-tighter">${balance.toFixed(2)}</p>
@@ -235,7 +365,7 @@ export default function Home() {
               </>
             )}
             <a href="/feed" className="text-[10px] font-black text-white uppercase hover:text-brand-volt transition-colors">Action Feed</a>
-            <a href="https://docs.google.com/forms/d/e/1FAIpQLScaec7ad9MQCanDmLrWQ8s6pQ-JnEMZhRvxtTm4tLTuK2eaSg/viewform?usp=header" target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-gray-400 uppercase hover:text-brand-volt transition-colors">Feedback</a>
+            <a href="https://docs.google.com/forms/d/e/1FAIpQLScaec7ad9MQCanDmLrWQ8s6pQ-JnEMZhRvxtTm4tLTuK2eaSg/viewform" target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-gray-400 uppercase hover:text-brand-volt transition-colors">Feedback</a>
             <a href="/my-bets" className="bg-brand-violet text-white px-4 py-2 rounded font-black uppercase text-[10px] hover:bg-white hover:text-brand-violet transition-colors shadow-md">My Slips</a>
             <button onClick={handleSignOut} className="text-[9px] text-gray-500 font-bold uppercase border-l border-gray-800 pl-4 hover:text-red-400 transition-colors">Sign Out</button>
           </div>
@@ -409,7 +539,6 @@ export default function Home() {
               <div className="flex justify-between items-end mb-4">
                 <label className="block text-[11px] font-black text-gray-400 uppercase tracking-widest">Wager Amount ($)</label>
                 
-                {/* CURRENT BANKROLL DISPLAY */}
                 <div className="bg-brand-violet/10 px-3 py-1.5 rounded border border-brand-violet/20 text-right">
                   <span className="block text-[8px] font-black text-brand-violet uppercase tracking-widest mb-0.5">Avail Bankroll</span>
                   <span className="block text-sm font-black text-brand-dark leading-none">${balance.toFixed(2)}</span>
@@ -426,7 +555,6 @@ export default function Home() {
                   className="w-full text-5xl font-black border-b-4 border-gray-100 bg-transparent text-brand-dark focus:border-brand-violet outline-none pb-2 pr-16" 
                 />
                 
-                {/* MAX BUTTON - PUSHES ENTIRE WALLET */}
                 <button 
                   onClick={() => setBetAmount(balance.toString())}
                   className="absolute right-0 bottom-4 bg-gray-200 text-gray-600 hover:bg-brand-violet hover:text-white px-3 py-1.5 rounded font-black text-[10px] uppercase tracking-widest transition-colors shadow-sm"
