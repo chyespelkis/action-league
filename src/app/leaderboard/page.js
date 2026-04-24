@@ -56,33 +56,38 @@ export default function Leaderboard() {
     fetchAllData();
   }, []);
 
-  // OVERALL GROSS WINNINGS LOGIC
+  // OVERALL NET PROFIT LOGIC
   useEffect(() => {
     if (!profiles.length) return;
 
     let processedStandings = profiles.map(p => {
-      let totalProfit = 0;
+      let netProfit = 0;
       
       const userBets = bets.filter(b => b.user_id === p.id);
       
       userBets.forEach(bet => {
+        // If we are looking at a specific week, only count bets from that week
+        if (selectedView !== 'Dashboard' && bet.games?.week_number !== parseInt(selectedView)) {
+          return; 
+        }
+
+        const amount = parseFloat(bet.wager_amount);
+
         if (bet.status === 'won') {
-          // If we are looking at a specific week, only count bets from that week
-          if (selectedView !== 'Dashboard' && bet.games?.week_number !== parseInt(selectedView)) {
-            return; 
-          }
-          totalProfit += calculateProfit(bet.wager_amount, bet.odds);
+          netProfit += calculateProfit(amount, bet.odds);
+        } else if (bet.status === 'lost') {
+          netProfit -= amount; // Subtract the lost stake for true net profit
         }
       });
 
       return {
         user_id: p.id,
         display_name: p.display_name,
-        score: totalProfit
+        score: netProfit
       };
     });
 
-    // Sort descending by highest gross profit
+    // Sort descending by highest net profit
     processedStandings.sort((a, b) => b.score - a.score);
     setStandings(processedStandings);
   }, [selectedView, bets, profiles]);
@@ -135,7 +140,7 @@ export default function Leaderboard() {
                 selectedView === 'Dashboard' ? 'bg-brand-violet text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-violet hover:text-brand-violet'
               }`}
             >
-              Total Winnings
+              Total Net Profit
             </button>
             
             {availableWeeks.map(week => (
@@ -157,7 +162,7 @@ export default function Leaderboard() {
             <span className="w-8 md:w-12 text-center text-gray-400">Rnk</span>
             <span className="flex-1 pl-2">Player</span>
             <span className="w-32 text-right text-brand-volt">
-              {selectedView === 'Dashboard' ? 'Total Won' : `Wk ${selectedView} Won`}
+              {selectedView === 'Dashboard' ? 'Overall Net' : `Wk ${selectedView} Net`}
             </span>
           </div>
           
@@ -166,13 +171,16 @@ export default function Leaderboard() {
               <p className="p-8 text-center text-gray-400 font-bold uppercase italic">No scores recorded yet.</p>
             ) : (
               standings.map((row, index) => {
-                const hasWonMoney = row.score > 0;
-                const scoreColor = hasWonMoney ? 'text-green-600' : 'text-gray-400';
+                const isPositive = row.score > 0;
+                const isNegative = row.score < 0;
+                let scoreColor = 'text-gray-400'; // $0 or even
+                if (isPositive) scoreColor = 'text-green-600';
+                if (isNegative) scoreColor = 'text-red-500';
 
                 return (
                   <div key={index} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors">
                     <div className="w-8 md:w-12 text-center font-black text-lg md:text-xl text-gray-400">
-                      {index === 0 && hasWonMoney ? <span className="text-brand-volt drop-shadow-sm text-2xl">🏆</span> : index + 1}
+                      {index === 0 && isPositive ? <span className="text-brand-volt drop-shadow-sm text-2xl">🏆</span> : index + 1}
                     </div>
                     
                     <div className="flex-1 pl-2 font-black text-brand-dark uppercase tracking-tighter text-sm md:text-lg truncate">
@@ -180,7 +188,7 @@ export default function Leaderboard() {
                     </div>
                     
                     <div className={`w-32 text-right text-xl md:text-2xl font-black tracking-tighter ${scoreColor}`}>
-                      ${parseFloat(row.score).toFixed(2)}
+                      {isNegative ? '-' : isPositive ? '+' : ''}${Math.abs(row.score).toFixed(2)}
                     </div>
                   </div>
                 )
