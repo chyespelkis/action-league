@@ -230,6 +230,10 @@ export default function Home() {
           `High roller in the building! ${profile?.display_name || 'Someone'} pushed the chips in. 🎰`,
           `🐳 WHALE SIGHTING: ${profile?.display_name || 'Someone'} must know something we don't.`,
           `Heavy action coming in from ${profile?.display_name || 'Someone'}. Fade or follow? 👀`
+          `Vegas is sweating. ${profile?.display_name || 'Someone'} just emptied the clip. 🔫`,
+          `Calling a zero blitz! ${profile?.display_name || 'Someone'} is bringing the house on this bet. 🏈🏠`,
+          `A true degenerate. ${profile?.display_name || 'Someone'} is betting the kids' college fund! 🎓💸`,
+          `Big boy bets only. ${profile?.display_name || 'Someone'} just stepped up to the plate with heavy bags. 💰`,
         ];
         const randomMsg = whaleMessages[Math.floor(Math.random() * whaleMessages.length)];
         await supabase.from('messages').insert([{ user_id: user.id, author_name: 'SYSTEM', content: randomMsg, message_type: 'system_alert' }]);
