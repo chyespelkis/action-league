@@ -236,6 +236,7 @@ export default function Home() {
       const numLine = selectedBet.type === 'moneyline' || selectedBet.value === 'ML' ? null : parseFloat(selectedBet.value);
       const numOdds = parseFloat(selectedBet.odds) || -110;
 
+      // 1. Process the Bet
       const { error: insertError } = await supabase.from('bets').insert([{
         user_id: user.id, 
         game_id: selectedBet.game.id, 
@@ -249,32 +250,48 @@ export default function Home() {
 
       if (insertError) throw insertError;
 
+      // 2. Update Wallet
       await supabase.from('profiles').update({ balance: balance - wager }).eq('id', user.id);
 
+      // 3. Close the Modal Immediately (So the user is never stuck)
+      setSelectedBet(null);
+      setBetAmount("");
+
+      // 4. Fire the Whale Alert (Silently)
       if (wager >= 50) {
         const whaleMessages = [
           `${profile?.display_name || 'Someone'} JUST DROPPED A WHALE BET! 🐋💸`,
           `🚨 ALERT: ${profile?.display_name || 'Someone'} is risking the rent money!`,
           `High roller in the building! ${profile?.display_name || 'Someone'} pushed the chips in. 🎰`,
           `🐳 WHALE SIGHTING: ${profile?.display_name || 'Someone'} must know something we don't.`,
-          `Heavy action coming in from ${profile?.display_name || 'Someone'}. Fade or follow? 👀`
+          `Heavy action coming in from ${profile?.display_name || 'Someone'}. Fade or follow? 👀`,
           `Vegas is sweating. ${profile?.display_name || 'Someone'} just emptied the clip. 🔫`,
-          `Calling a zero blitz! ${profile?.display_name || 'Someone'} is bringing the house on this bet. 🏈🏠`,
-          `A true degenerate. ${profile?.display_name || 'Someone'} is betting the kids' college fund! 🎓💸`,
-          `Big boy bets only. ${profile?.display_name || 'Someone'} just stepped up to the plate with heavy bags. 💰`,
+          `Calling a zero blitz! ${profile?.display_name || 'Someone'} is bringing the house on this bet. 🏈🏠`
         ];
         const randomMsg = whaleMessages[Math.floor(Math.random() * whaleMessages.length)];
-        await supabase.from('messages').insert([{ user_id: user.id, author_name: 'SYSTEM', content: randomMsg, message_type: 'system_alert' }]);
+        
+        // If this fails, it won't crash the app. It just logs an error to the background console.
+        const { error: chatError } = await supabase.from('messages').insert([{ 
+          user_id: user.id, 
+          author_name: 'SYSTEM', 
+          content: randomMsg, 
+          message_type: 'system_alert' 
+        }]);
+
+        if (chatError) console.error("Whale alert failed to send:", chatError.message);
       }
-      setSelectedBet(null);
-      setBetAmount("");
+      
+      // 5. Success
       alert("✅ TICKET LOCKED IN!");
       window.location.reload();
+
     } catch (err) { 
       console.error(err);
       alert(`Error placing bet: ${err.message}`); 
     }
-    finally { setIsSubmitting(false); }
+    finally { 
+      setIsSubmitting(false); 
+    }
   };
 
   const isCommissioner = profile?.role === 'admin' || profile?.display_name?.toUpperCase() === 'CJYES';
