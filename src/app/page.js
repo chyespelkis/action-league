@@ -69,10 +69,10 @@ export default function Home() {
         const { data: msgs } = await supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(6);
         setRecentMessages(msgs || []);
 
-        // --- SPLASH SCREEN CALCULATOR ---
+        // --- UPGRADED SPLASH SCREEN CALCULATOR ---
         if (typeof window !== 'undefined') {
-          // Find the most recently completed week based on graded games
           const { data: finalGames } = await supabase.from('games').select('week_number').eq('status', 'final');
+          
           if (finalGames && finalGames.length > 0) {
             const completedWeeks = [...new Set(finalGames.map(game => game.week_number))].sort((a,b) => b-a);
             const latestWeek = completedWeeks[0];
@@ -80,62 +80,89 @@ export default function Home() {
             const splashKey = `action_league_splash_week_${latestWeek}`;
             if (!localStorage.getItem(splashKey)) {
               
-              // Calculate the awards for this specific week
-              const { data: allGraded } = await supabase
-                .from('bets')
-                .select('wager_amount, odds, status, selection, line_at_bet, profiles!fk_bets_profiles(display_name), games!fk_bets_games(week_number)')
-                .neq('status', 'pending');
+              // NEW GUARDRAIL: Check if there are any games STILL PENDING for this week
+              const { data: pendingThisWeek } = await supabase
+                .from('games')
+                .select('id')
+                .eq('week_number', latestWeek)
+                .eq('status', 'pending');
 
-              const weekBets = allGraded.filter(b => b.games?.week_number === latestWeek);
-              
-              if (weekBets.length > 0) {
-                let userStats = {};
-                let biggestHit = { name: '', amount: 0, pick: '' };
+              // ONLY show the splash if every single game for this week is officially graded
+              if (pendingThisWeek && pendingThisWeek.length === 0) {
+                
+                const { data: allGraded } = await supabase
+                  .from('bets')
+                  .select('wager_amount, odds, status, selection, line_at_bet, profiles!fk_bets_profiles(display_name), games!fk_bets_games(week_number)')
+                  .neq('status', 'pending');
 
-                weekBets.forEach(bet => {
-                  const name = bet.profiles?.display_name || 'Unknown';
-                  if (!userStats[name]) userStats[name] = { grossProfit: 0, netProfit: 0 };
-                  
-                  const amount = parseFloat(bet.wager_amount);
-                  
-                  if (bet.status === 'won') {
-                    const profit = calculateProfit(amount, bet.odds).rawProfit;
-                    userStats[name].grossProfit += profit;
-                    userStats[name].netProfit += profit;
+                const weekBets = allGraded.filter(b => b.games?.week_number === latestWeek);
+                
+                if (weekBets.length > 0) {
+                  let userStats = {};
+                  let biggestHit = { name: 'No Hits', amount: 0, pick: '-' };
+                  let sniper = { name: 'No Snipes', odds: -9999, pick: '-', formattedOdds: '-' };
+
+                  weekBets.forEach(bet => {
+                    const name = bet.profiles?.display_name || 'Unknown';
+                    if (!userStats[name]) userStats[name] = { grossProfit: 0, netProfit: 0, totalWagered: 0 };
                     
-                    // Track Biggest Hit
-                    if (profit > biggestHit.amount) {
-                      biggestHit = { 
-                        name, 
-                        amount: profit, 
-                        pick: `${bet.selection} ${bet.line_at_bet || ''}`.trim() 
-                      };
+                    const amount = parseFloat(bet.wager_amount);
+                    const numOdds = parseFloat(bet.odds) || -110;
+
+                    userStats[name].totalWagered += amount;
+                    
+                    if (bet.status === 'won') {
+                      const profit = calculateProfit(amount, bet.odds).rawProfit;
+                      userStats[name].grossProfit += profit;
+                      userStats[name].netProfit += profit;
+                      
+                      if (profit > biggestHit.amount) {
+                        biggestHit = { 
+                          name, 
+                          amount: profit, 
+                          pick: `${bet.selection} ${bet.line_at_bet || ''}`.trim() 
+                        };
+                      }
+
+                      if (numOdds > sniper.odds) {
+                        sniper = {
+                          name,
+                          odds: numOdds,
+                          pick: `${bet.selection} ${bet.line_at_bet || ''}`.trim(),
+                          formattedOdds: numOdds > 0 ? `+${numOdds}` : numOdds.toString()
+                        };
+                      }
+                    } else if (bet.status === 'lost') {
+                      userStats[name].netProfit -= amount;
                     }
-                  } else if (bet.status === 'lost') {
-                    userStats[name].netProfit -= amount;
-                  }
-                });
+                  });
 
-                // Determine MVP and Toilet Bowl
-                let mvp = { name: 'No One', amount: 0 };
-                let toilet = { name: 'No One', amount: 0 };
+                  let mvp = { name: 'No One', amount: 0 };
+                  let toilet = { name: 'No One', amount: 0 };
+                  let degenerate = { name: 'No One', amount: 0 };
 
-                Object.keys(userStats).forEach(name => {
-                  if (userStats[name].grossProfit > mvp.amount) {
-                    mvp = { name, amount: userStats[name].grossProfit };
-                  }
-                  if (userStats[name].netProfit < toilet.amount) {
-                    toilet = { name, amount: userStats[name].netProfit };
-                  }
-                });
+                  Object.keys(userStats).forEach(name => {
+                    if (userStats[name].grossProfit > mvp.amount) {
+                      mvp = { name, amount: userStats[name].grossProfit };
+                    }
+                    if (userStats[name].netProfit < toilet.amount) {
+                      toilet = { name, amount: userStats[name].netProfit };
+                    }
+                    if (userStats[name].totalWagered > degenerate.amount) {
+                      degenerate = { name, amount: userStats[name].totalWagered };
+                    }
+                  });
 
-                setSplashData({
-                  week: latestWeek,
-                  mvp,
-                  toilet,
-                  biggestHit,
-                  storageKey: splashKey
-                });
+                  setSplashData({
+                    week: latestWeek,
+                    mvp,
+                    toilet,
+                    biggestHit,
+                    sniper,
+                    degenerate,
+                    storageKey: splashKey
+                  });
+                }
               }
             }
           }
@@ -145,6 +172,7 @@ export default function Home() {
     }
     getInitialData();
 
+    // Ensures your live chat keeps working!
     const channel = supabase.channel('sidebar').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (p) => {
       setRecentMessages(prev => [p.new, ...prev].slice(0, 6));
     }).subscribe();
