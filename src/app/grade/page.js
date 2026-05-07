@@ -17,6 +17,7 @@ export default function GradingRoom() {
   // Rollover State
   const [rolloverWeek, setRolloverWeek] = useState("");
   const [isProcessingRollover, setIsProcessingRollover] = useState(false);
+  const [latestGradedWeek, setLatestGradedWeek] = useState(null); // NEW: Tracker State
 
   useEffect(() => {
     async function checkAuthAndFetch() {
@@ -27,8 +28,18 @@ export default function GradingRoom() {
         
         if (prof?.role === 'admin' || prof?.display_name?.toUpperCase() === 'CJYES') {
           setIsAuthorized(true);
+          
+          // 1. Fetch pending games
           const { data } = await supabase.from('games').select('*').eq('status', 'pending').order('kickoff', { ascending: true });
           if (data) setGames(data);
+
+          // 2. NEW: Fetch the most recently graded week
+          const { data: finalGames } = await supabase.from('games').select('week_number').eq('status', 'final');
+          if (finalGames && finalGames.length > 0) {
+            const maxWeek = Math.max(...finalGames.map(g => g.week_number));
+            setLatestGradedWeek(maxWeek);
+          }
+
           setLoading(false);
         }
       }
@@ -106,11 +117,16 @@ export default function GradingRoom() {
         }
       }
     }
+    
+    // Update the Latest Graded Week tracker if this game belongs to a new week
+    if (!latestGradedWeek || game.week_number > latestGradedWeek) {
+      setLatestGradedWeek(game.week_number);
+    }
+
     alert(`${game.away_team} @ ${game.home_team} has been officially graded!`);
     setGames(games.filter(g => g.id !== game.id));
   }
 
-  // --- NEW ROLLOVER FUNCTION ---
   async function processWeeklyRollover() {
     if (!rolloverWeek) return alert("Please enter the week number you want to close out.");
     
@@ -220,7 +236,7 @@ export default function GradingRoom() {
           )}
         </div>
 
-        {/* --- NEW LEAGUE MANAGEMENT SECTION --- */}
+        {/* LEAGUE MANAGEMENT SECTION */}
         <div className="mb-8 border-b-2 border-gray-300 pb-4">
           <h1 className="text-3xl font-black uppercase italic tracking-tighter text-brand-dark">League Management</h1>
           <p className="text-sm font-bold text-gray-500 uppercase mt-1">End of week processing</p>
@@ -232,6 +248,14 @@ export default function GradingRoom() {
             <p className="text-xs font-bold text-gray-500 uppercase mt-2 leading-relaxed">
               Run this after all games for a week are officially graded. This will scan all tickets for the specified week and deposit matching funds (up to $100) directly into players' live wallets.
             </p>
+            
+            {/* NEW: DYNAMIC INDICATOR */}
+            {latestGradedWeek !== null && (
+              <div className="mt-4 inline-block bg-[#0b0f19] text-brand-volt px-3 py-1.5 rounded-lg border border-gray-800 text-[10px] font-black uppercase tracking-widest shadow-sm">
+                Latest Graded Week: <span className="text-white text-xs ml-1">{latestGradedWeek}</span>
+              </div>
+            )}
+
           </div>
           
           <div className="flex flex-col items-end gap-3 w-full md:w-auto">
