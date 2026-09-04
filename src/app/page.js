@@ -142,8 +142,8 @@ export default function Home() {
                   let degenerate = { name: 'No One', amount: 0 };
 
                   Object.keys(userStats).forEach(name => {
-                    if (userStats[name].grossProfit > mvp.amount) {
-                      mvp = { name, amount: userStats[name].grossProfit };
+                    if (userStats[name].netProfit > mvp.amount) {
+                      mvp = { name, amount: userStats[name].netProfit };
                     }
                     if (userStats[name].netProfit < toilet.amount) {
                       toilet = { name, amount: userStats[name].netProfit };
