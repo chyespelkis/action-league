@@ -92,8 +92,7 @@ export default function Leaderboard() {
     setStandings(processedStandings);
   }, [selectedView, bets, profiles]);
 
-  const isCommissioner = currentUserProfile?.role === 'admin' || currentUserProfile?.display_name?.toUpperCase() === 'CJYES';
-
+const isCommissioner = currentUserProfile?.role === 'admin' || user?.email === 'chyespelkis@gmail.com';
   if (loading) return <main className="min-h-screen bg-slate-200 p-8 text-center font-black uppercase italic text-brand-dark mt-20 text-xl tracking-widest">Calculating Scores...</main>;
 
   return (

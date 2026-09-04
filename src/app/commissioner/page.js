@@ -26,8 +26,7 @@ export default function CommissionerOffice() {
       if (session) {
         const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
         
-        if (prof?.role === 'admin' || prof?.display_name?.toUpperCase() === 'CJYES') {
-          setIsAuthorized(true);
+if (prof?.role === 'admin' || session.user.email === 'chyespelkis@gmail.com') {          setIsAuthorized(true);
           
           const { data } = await supabase.from('games').select('*').eq('status', 'pending').order('kickoff', { ascending: true });
           if (data) setGames(data);

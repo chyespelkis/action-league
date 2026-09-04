@@ -294,8 +294,7 @@ export default function Home() {
     }
   };
 
-  const isCommissioner = profile?.role === 'admin' || profile?.display_name?.toUpperCase() === 'CJYES';
-  const displayedGames = games.filter(g => g.week_number === activeWeek && new Date(g.kickoff) > new Date());
+const isCommissioner = profile?.role === 'admin' || user?.email === 'chyespelkis@gmail.com';  const displayedGames = games.filter(g => g.week_number === activeWeek && new Date(g.kickoff) > new Date());
 
   if (pageLoading) return <main className="min-h-screen bg-slate-200 flex items-center justify-center font-black uppercase tracking-widest text-brand-dark text-xl">Opening The Book...</main>;
 
