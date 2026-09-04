@@ -7,241 +7,245 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-const COMMISSIONER_EMAIL = 'chyespelkis@gmail.com';
-
-export default function Commissioner() {
+export default function CommissionerOffice() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
-
-  const [homeTeam, setHomeTeam] = useState('');
-  const [awayTeam, setAwayTeam] = useState('');
-  const [homeAbbr, setHomeAbbr] = useState('');
-  const [awayAbbr, setAwayAbbr] = useState('');
-  const [kickoff, setKickoff] = useState('');
-  const [homeSpread, setHomeSpread] = useState('');
-  const [homeML, setHomeML] = useState('');
-  const [awayML, setAwayML] = useState('');
-  const [total, setTotal] = useState('');
-  const [weekNumber, setWeekNumber] = useState(1); // <-- ADD THIS LINE
-  const [statusMessage, setStatusMessage] = useState('');
   
-  const [activeGames, setActiveGames] = useState([]);
-  const [players, setPlayers] = useState([]);
+  const [games, setGames] = useState([]);
+  const [scores, setScores] = useState({});
+  const [isGrading, setIsGrading] = useState(false);
+  
+  const [rolloverWeek, setRolloverWeek] = useState("");
+  const [isProcessingRollover, setIsProcessingRollover] = useState(false);
+  const [latestGradedWeek, setLatestGradedWeek] = useState(null);
 
   useEffect(() => {
-    async function checkAuth() {
+    async function checkAuthAndFetch() {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user?.email === COMMISSIONER_EMAIL) {
-        setIsAuthorized(true);
-        fetchData();
+      
+      if (session) {
+        const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+        
+        if (prof?.role === 'admin' || prof?.display_name?.toUpperCase() === 'CJYES') {
+          setIsAuthorized(true);
+          
+          const { data } = await supabase.from('games').select('*').eq('status', 'pending').order('kickoff', { ascending: true });
+          if (data) setGames(data);
+
+          const { data: finalGames } = await supabase.from('games').select('week_number').eq('status', 'final');
+          if (finalGames && finalGames.length > 0) {
+            setLatestGradedWeek(Math.max(...finalGames.map(g => g.week_number)));
+          }
+        }
       }
       setAuthLoading(false);
     }
-    checkAuth();
+    checkAuthAndFetch();
   }, []);
 
-  async function fetchData() {
-    const { data: gamesData } = await supabase.from('games').select('*').order('kickoff', { ascending: true });
-    if (gamesData) setActiveGames(gamesData);
+  const handleScoreChange = (gameId, team, val) => {
+    setScores(prev => ({ ...prev, [gameId]: { ...prev[gameId], [team]: val === "" ? undefined : parseInt(val) } }));
+  };
 
-    const { data: playersData } = await supabase.from('profiles').select('*').order('display_name', { ascending: true });
-    if (playersData) setPlayers(playersData);
-  }
+  async function handleBulkGrade() {
+    const gamesToGrade = games.filter(g => scores[g.id]?.home !== undefined && scores[g.id]?.away !== undefined);
+    
+    if (gamesToGrade.length === 0) return alert("Enter both the Away and Home scores for at least one game to grade it.");
+    if (!window.confirm(`You are about to officially grade ${gamesToGrade.length} game(s) and pay out all matching tickets.\n\nProceed?`)) return;
 
-  async function handleAddGame(e) {
-    e.preventDefault();
-    setStatusMessage('Adding game to database...');
-    const { error } = await supabase.from('games').insert([{
-        home_team: homeTeam, 
-        away_team: awayTeam, 
-        home_abbr: homeAbbr.toUpperCase(),
-        away_abbr: awayAbbr.toUpperCase(),
-        kickoff: new Date(kickoff).toISOString(),
-        home_spread: parseFloat(homeSpread), 
-        away_spread: parseFloat(homeSpread) * -1,
-        home_ml: parseInt(homeML), 
-        away_ml: parseInt(awayML), 
-        total_points: parseFloat(total),
-        week_number: parseInt(weekNumber) // <-- ADD THIS LINE
-      }]);
-      
-    if (error) {
-      setStatusMessage(`Error: ${error.message}`);
-    } else {
-      setStatusMessage('Touchdown! The full board is updated.');
-      setHomeTeam(''); setAwayTeam(''); setHomeAbbr(''); setAwayAbbr(''); 
-      setKickoff(''); setHomeSpread(''); setHomeML(''); setAwayML(''); setTotal('');
-      fetchData();
+    setIsGrading(true);
+    try {
+      for (let game of gamesToGrade) {
+        const homeScore = scores[game.id].home;
+        const awayScore = scores[game.id].away;
+
+        await supabase.from('games').update({ home_score: homeScore, away_score: awayScore, status: 'final' }).eq('id', game.id);
+        
+        const { data: bets } = await supabase.from('bets').select('*').eq('game_id', game.id).eq('status', 'pending');
+
+        if (bets && bets.length > 0) {
+          for (let bet of bets) {
+            let isWinner = false;
+            let isPush = false; 
+
+            if (bet.bet_type === 'moneyline') {
+              if (homeScore > awayScore) {
+                if (bet.selection === game.home_team || bet.selection === game.home_abbr) isWinner = true;
+              } else if (awayScore > homeScore) {
+                if (bet.selection === game.away_team || bet.selection === game.away_abbr) isWinner = true;
+              } else {
+                isPush = true;
+              }
+            } 
+            else if (bet.bet_type === 'spread') {
+              const betLine = parseFloat(bet.line_at_bet);
+              if (bet.selection === game.home_team || bet.selection === game.home_abbr) {
+                if ((homeScore + betLine) > awayScore) isWinner = true;
+                else if ((homeScore + betLine) === awayScore) isPush = true;
+              } else {
+                if ((awayScore + betLine) > homeScore) isWinner = true;
+                else if ((awayScore + betLine) === homeScore) isPush = true;
+              }
+            } 
+            else if (bet.bet_type === 'total') {
+              const totalScore = homeScore + awayScore;
+              const gameTotal = parseFloat(game.total_points || game.total || game.over_under);
+              
+              if ((bet.selection === 'Over' || bet.selection === 'OVER') && totalScore > gameTotal) isWinner = true;
+              else if ((bet.selection === 'Under' || bet.selection === 'UNDER') && totalScore < gameTotal) isWinner = true;
+              else if (totalScore === gameTotal) isPush = true;
+            }
+
+            // Sequential balance fetch ensures no race conditions when paying out multiple bets to the same user
+            if (isWinner) {
+              const numOdds = parseFloat(bet.odds);
+              let profit = numOdds > 0 ? bet.wager_amount * (numOdds / 100) : bet.wager_amount * (100 / Math.abs(numOdds));
+              const payout = bet.wager_amount + profit;
+
+              const { data: profile } = await supabase.from('profiles').select('balance').eq('id', bet.user_id).single();
+              if (profile) await supabase.from('profiles').update({ balance: profile.balance + payout }).eq('id', bet.user_id);
+              await supabase.from('bets').update({ status: 'won' }).eq('id', bet.id);
+            } 
+            else if (isPush) {
+              const { data: profile } = await supabase.from('profiles').select('balance').eq('id', bet.user_id).single();
+              if (profile) await supabase.from('profiles').update({ balance: profile.balance + bet.wager_amount }).eq('id', bet.user_id);
+              await supabase.from('bets').update({ status: 'push' }).eq('id', bet.id);
+            } 
+            else {
+              await supabase.from('bets').update({ status: 'lost' }).eq('id', bet.id);
+            }
+          }
+        }
+      }
+      alert(`✅ Successfully graded ${gamesToGrade.length} game(s)!`);
+      window.location.reload(); 
+    } catch (err) {
+      console.error(err);
+      alert(`Grading Error: ${err.message}`);
+    } finally {
+      setIsGrading(false);
     }
   }
 
-  async function handleDeleteGame(gameId) {
-    if (!window.confirm("Are you sure you want to delete this game? This will also delete any bets placed on it!")) return;
-    await supabase.from('games').delete().eq('id', gameId);
-    fetchData(); 
+  async function processWeeklyRollover() {
+    if (!rolloverWeek) return alert("Enter the week number you want to close out.");
+    if (window.confirm(`Deposit Weekly Stimulus for Week ${rolloverWeek}?\n\nThis adds money to players' wallets based on their Week ${rolloverWeek} wagers (up to $100).`)) {
+      setIsProcessingRollover(true);
+      try {
+        const { error } = await supabase.rpc('process_weekly_stimulus', { completed_week: parseInt(rolloverWeek) });
+        if (error) throw error;
+        alert(`✅ SUCCESS: Week ${rolloverWeek} stimulus deposited!`);
+        setRolloverWeek("");
+      } catch (err) { alert(`Error: ${err.message}`); } 
+      finally { setIsProcessingRollover(false); }
+    }
   }
 
-  async function handleRemovePlayer(playerId, playerName) {
-    if (!window.confirm(`Are you absolutely sure you want to cut ${playerName} from the league? This permanently deletes their profile, wallet, and all active wagers.`)) return;
-    
-    await supabase.from('bets').delete().eq('user_id', playerId);
-    await supabase.from('weekly_wallets').delete().eq('user_id', playerId);
-    await supabase.from('profiles').delete().eq('id', playerId);
-    
-    alert(`${playerName} has been removed from the league.`);
-    fetchData();
-  }
-
-  if (authLoading) return <main className="p-8 text-center font-black uppercase italic text-brand-dark">Verifying Credentials...</main>;
+  if (authLoading) return <main className="p-8 text-center font-black uppercase italic text-brand-dark">Verifying...</main>;
 
   if (!isAuthorized) {
     return (
-      <main className="min-h-screen bg-brand-dark flex items-center justify-center p-4">
-        <div className="bg-red-500 text-white p-8 rounded-xl shadow-2xl text-center max-w-md w-full border-4 border-red-700">
-          <h1 className="text-4xl font-black uppercase italic tracking-tighter mb-4">Access Denied</h1>
-          <p className="font-bold mb-6 text-red-100">You must be the Commissioner to enter the Front Office.</p>
-          <a href="/" className="inline-block bg-brand-dark text-brand-volt px-6 py-3 rounded-lg font-black uppercase tracking-widest hover:bg-brand-panel transition-colors shadow-lg">Return to Board</a>
+      <main className="min-h-screen bg-[#0b0f19] flex items-center justify-center p-4">
+        <div className="bg-white p-12 rounded-3xl text-center border-t-8 border-red-500 max-w-md w-full">
+          <h1 className="text-4xl font-black uppercase italic text-brand-dark mb-4">Access Denied</h1>
+          <a href="/" className="inline-block bg-brand-dark text-brand-volt px-8 py-4 rounded-xl font-black uppercase">Return to Board</a>
         </div>
       </main>
     );
   }
 
+  const readyToGradeCount = games.filter(g => scores[g.id]?.home !== undefined && scores[g.id]?.away !== undefined).length;
+
   return (
-    <main className="min-h-screen bg-slate-200 p-4 md:p-8">
-      <div className="max-w-6xl mx-auto">
+    <main className="min-h-screen bg-slate-200 text-brand-dark font-sans pb-12">
+      <nav className="bg-[#0b0f19] p-4 border-b-2 border-brand-violet sticky top-0 z-40 shadow-xl mb-8">
+        <div className="max-w-6xl mx-auto flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <img src="/icon.png" alt="Action League" className="w-8 h-8 object-contain" />
+            <h1 className="text-xl font-black text-white italic tracking-tighter uppercase">Front Office</h1>
+          </div>
+          <a href="/" className="text-[10px] font-black text-brand-violet uppercase hover:text-white transition-colors bg-brand-violet/10 px-3 py-1.5 rounded-full border border-brand-violet/30">Exit Vault →</a>
+        </div>
+      </nav>
+
+      <div className="max-w-6xl mx-auto p-4 md:p-8">
         
-        <div className="flex justify-between items-end mb-8 border-b-4 border-brand-violet pb-4">
-          <h1 className="text-3xl font-black uppercase italic tracking-tighter text-brand-dark">Front Office</h1>
-          <a href="/" className="bg-brand-dark text-brand-volt px-4 py-2 rounded-lg font-black uppercase tracking-widest hover:bg-brand-panel transition-colors text-[10px] md:text-xs shadow-md">
-            Return to Board
-          </a>
+        {/* BULK GRADING SECTION */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 border-b-2 border-gray-300 pb-4 gap-4">
+          <div>
+            <h1 className="text-3xl font-black uppercase italic tracking-tighter">Bulk Grading</h1>
+            <p className="text-sm font-bold text-gray-500 uppercase mt-1">Enter final scores. Leave pending games blank.</p>
+          </div>
+          <button 
+            onClick={handleBulkGrade}
+            disabled={isGrading || readyToGradeCount === 0}
+            className="bg-brand-dark text-brand-volt px-6 py-3 rounded-xl font-black uppercase tracking-widest shadow-lg hover:bg-[#1e293b] disabled:opacity-50 disabled:bg-gray-400 transition-all"
+          >
+            {isGrading ? 'Processing...' : `Grade Selected (${readyToGradeCount})`}
+          </button>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-12">
+          {games.length === 0 ? (
+            <div className="lg:col-span-2 text-center p-12 bg-white rounded-xl shadow-sm border border-gray-200">
+               <p className="text-gray-400 font-bold uppercase italic tracking-widest">The board is clean.</p>
+            </div>
+          ) : (
+            games.map(game => (
+              <div key={game.id} className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden flex flex-col sm:flex-row">
+                
+                <div className="bg-[#0b0f19] p-4 flex sm:flex-col justify-between items-center sm:justify-center sm:w-24 border-b sm:border-b-0 sm:border-r-4 border-brand-violet shrink-0">
+                  <span className="text-[10px] font-black text-gray-400 uppercase text-center">{new Date(game.kickoff).toLocaleDateString(undefined, {weekday: 'short', month: 'numeric', day: 'numeric'})}</span>
+                  <span className="text-[9px] font-black bg-brand-violet text-white px-2 py-0.5 rounded uppercase mt-0 sm:mt-2">Wk {game.week_number}</span>
+                </div>
+
+                <div className="p-4 flex-1 flex justify-between items-center gap-4">
+                  <div className="flex flex-col flex-1 items-end gap-1">
+                    <span className="text-[10px] font-black text-gray-400 uppercase">{game.away_team}</span>
+                    <input type="number" placeholder="Away" value={scores[game.id]?.away ?? ''} onChange={(e) => handleScoreChange(game.id, 'away', e.target.value)} className="w-16 border-2 border-gray-200 p-2 rounded-lg font-black text-center focus:border-brand-violet outline-none text-lg" />
+                  </div>
+                  
+                  <span className="font-black text-gray-300 text-xl">@</span>
+                  
+                  <div className="flex flex-col flex-1 items-start gap-1">
+                    <span className="text-[10px] font-black text-gray-400 uppercase">{game.home_team}</span>
+                    <input type="number" placeholder="Home" value={scores[game.id]?.home ?? ''} onChange={(e) => handleScoreChange(game.id, 'home', e.target.value)} className="w-16 border-2 border-gray-200 p-2 rounded-lg font-black text-center focus:border-brand-violet outline-none text-lg" />
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* LEAGUE MANAGEMENT SECTION */}
+        <div className="mb-6 border-b-2 border-gray-300 pb-4">
+          <h1 className="text-3xl font-black uppercase italic tracking-tighter">League Management</h1>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex-1">
+            <h3 className="font-black uppercase tracking-tighter text-xl">Weekly Stimulus Deposit</h3>
+            <p className="text-xs font-bold text-gray-500 uppercase mt-2 leading-relaxed">
+              Run this after all games for a week are officially graded. Drops up to $100 into live wallets based on prior week wagers.
+            </p>
+            {latestGradedWeek !== null && (
+              <div className="mt-4 inline-block bg-[#0b0f19] text-brand-volt px-3 py-1.5 rounded-lg border border-gray-800 text-[10px] font-black uppercase tracking-widest shadow-sm">
+                Latest Graded Week: <span className="text-white text-xs ml-1">{latestGradedWeek}</span>
+              </div>
+            )}
+          </div>
           
-          {/* LEFT COLUMN: Add Lines */}
-          <div className="bg-white p-8 rounded-xl shadow-md border-t-8 border-t-brand-dark border-x border-b border-gray-200 h-fit">
-            <h2 className="text-2xl font-black italic uppercase text-brand-dark mb-6">Add Lines</h2>
-            
-            <form onSubmit={handleAddGame} className="space-y-4">
-              
-              {/* 1. TEAM NAMES */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Away Team</label>
-                  <input type="text" required value={awayTeam} onChange={(e) => setAwayTeam(e.target.value)} placeholder="Birmingham Stallions" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Home Team</label>
-                  <input type="text" required value={homeTeam} onChange={(e) => setHomeTeam(e.target.value)} placeholder="Arlington Renegades" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
-                </div>
-              </div>
-
-              {/* 2. ABBREVIATIONS */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Away Abbr</label>
-                  <input type="text" required maxLength="4" value={awayAbbr} onChange={(e) => setAwayAbbr(e.target.value)} placeholder="BHAM" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-black uppercase focus:border-brand-violet outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Home Abbr</label>
-                  <input type="text" required maxLength="4" value={homeAbbr} onChange={(e) => setHomeAbbr(e.target.value)} placeholder="ARL" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-black uppercase focus:border-brand-violet outline-none" />
-                </div>
-              </div>
-
-              {/* 3. WEEK NUMBER & KICKOFF */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Week Number</label>
-                  <input type="number" min="1" required value={weekNumber} onChange={(e) => setWeekNumber(e.target.value)} className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-black text-brand-dark focus:border-brand-violet outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Kickoff Time</label>
-                  <input type="datetime-local" required value={kickoff} onChange={(e) => setKickoff(e.target.value)} className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
-                </div>
-              </div>
-
-              {/* 4. BETTING LINES */}
-              <div className="grid grid-cols-3 gap-2 bg-gray-50 p-4 rounded-xl border border-gray-200">
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase">Home Spread</label>
-                  <input type="number" step="0.5" required value={homeSpread} onChange={(e) => setHomeSpread(e.target.value)} placeholder="-3.5" className="mt-1 block w-full border-2 border-gray-200 rounded p-2 font-bold text-sm focus:border-brand-violet outline-none" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase">Away ML</label>
-                  <input type="number" required value={awayML} onChange={(e) => setAwayML(e.target.value)} placeholder="+150" className="mt-1 block w-full border-2 border-gray-200 rounded p-2 font-bold text-sm focus:border-brand-violet outline-none" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase">Home ML</label>
-                  <input type="number" required value={homeML} onChange={(e) => setHomeML(e.target.value)} placeholder="-170" className="mt-1 block w-full border-2 border-gray-200 rounded p-2 font-bold text-sm focus:border-brand-violet outline-none" />
-                </div>
-              </div>
-
-              {/* 5. GAME TOTAL */}
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase">Game Total (O/U)</label>
-                <input type="number" step="0.5" required value={total} onChange={(e) => setTotal(e.target.value)} placeholder="44.5" className="mt-1 block w-full border-2 border-gray-200 rounded-lg p-2 font-bold focus:border-brand-violet outline-none" />
-              </div>
-
-              <button type="submit" className="w-full bg-brand-dark text-brand-volt font-black uppercase tracking-widest py-3 rounded-lg hover:bg-brand-panel shadow-[0_0_10px_rgba(57,255,20,0.2)] transition-all">
-                Post to Board
-              </button>
-            </form>
-
-            {statusMessage && <div className="mt-4 p-3 bg-brand-dark text-brand-volt border border-brand-violet rounded-lg text-center font-bold">{statusMessage}</div>}
-          </div>
-
-          {/* RIGHT COLUMN: Manage Board & Manage Roster */}
-          <div className="space-y-8">
-            <div className="bg-white p-8 rounded-xl shadow-md border border-gray-200">
-              <h2 className="text-2xl font-black italic uppercase mb-6 text-brand-dark">Manage Board</h2>
-              <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
-                {activeGames.length === 0 ? (
-                  <p className="text-gray-500 font-bold italic">No games on the board.</p>
-                ) : (
-                  activeGames.map(game => (
-                    <div key={game.id} className="border-2 border-gray-100 rounded-lg p-4 flex justify-between items-center hover:border-brand-violet transition-colors">
-                      <div>
-                        <h3 className="font-black uppercase text-sm text-brand-dark">{game.away_team} @ {game.home_team}</h3>
-                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                          {new Date(game.kickoff).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                      <button onClick={() => handleDeleteGame(game.id)} className="text-xs bg-red-50 text-red-600 font-bold px-3 py-2 rounded border border-red-100 hover:bg-red-600 hover:text-white transition-colors uppercase tracking-wider">
-                        Delete
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
+          <div className="flex flex-col items-end gap-3 w-full md:w-auto">
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Close Week:</span>
+              <input type="number" placeholder="Ex: 1" value={rolloverWeek} onChange={(e) => setRolloverWeek(e.target.value)} className="w-24 border-2 border-gray-200 p-3 rounded-xl font-black text-center focus:border-brand-violet outline-none text-lg" />
             </div>
-
-            <div className="bg-white p-8 rounded-xl shadow-md border border-gray-200">
-              <h2 className="text-2xl font-black italic uppercase mb-6 text-brand-dark">Manage Roster</h2>
-              <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
-                {players.length === 0 ? (
-                  <p className="text-gray-500 font-bold italic">No players in the league yet.</p>
-                ) : (
-                  players.map(player => (
-                    <div key={player.id} className="bg-gray-50 rounded-lg p-3 flex justify-between items-center border border-gray-200">
-                      <div>
-                        <span className="font-black text-brand-dark uppercase tracking-wider block">{player.display_name}</span>
-                        <span className="text-[10px] text-brand-violet font-bold">{player.email || 'Email not captured'}</span>
-                      </div>
-                      <button 
-                        onClick={() => handleRemovePlayer(player.id, player.display_name)} 
-                        className="text-[10px] text-red-500 font-bold px-3 py-1 rounded border border-red-200 hover:bg-red-500 hover:text-white transition-colors uppercase tracking-widest"
-                      >
-                        Cut Player
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
+            <button onClick={processWeeklyRollover} disabled={isProcessingRollover} className="w-full bg-brand-violet text-white px-6 py-4 rounded-xl font-black uppercase tracking-widest hover:bg-[#0b0f19] shadow-lg transition-all active:scale-95 disabled:opacity-50">
+              {isProcessingRollover ? 'Processing...' : 'Run Rollover'}
+            </button>
           </div>
         </div>
+
       </div>
     </main>
   );
