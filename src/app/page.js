@@ -77,7 +77,7 @@ export default function Home() {
             const completedWeeks = [...new Set(finalGames.map(game => game.week_number))].sort((a,b) => b-a);
             const latestWeek = completedWeeks[0];
             
-            const splashKey = `action_league_splash_week_${latestWeek}`;
+            const splashKey = 'nfl_splash_week_${latestWeek}';
             if (!localStorage.getItem(splashKey)) {
               
               // NEW GUARDRAIL: Check if there are any games STILL PENDING for this week
