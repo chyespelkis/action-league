@@ -118,7 +118,6 @@ export default function Leaderboard() {
             {isCommissioner && (
               <>
                 <a href="/commissioner" className="text-[10px] font-black text-brand-volt uppercase hover:text-white transition-colors">Front Office</a>
-                <a href="/grade" className="text-[10px] font-black text-brand-volt uppercase hover:text-white transition-colors">Grade</a>
                 <div className="h-4 w-px bg-gray-700"></div>
               </>
             )}
