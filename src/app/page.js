@@ -9,6 +9,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function Home() {
   const [games, setGames] = useState([]);
+  const [activeLeague, setActiveLeague] = useState('NFL');
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [selectedBet, setSelectedBet] = useState(null);
@@ -77,7 +78,7 @@ export default function Home() {
             const completedWeeks = [...new Set(finalGames.map(game => game.week_number))].sort((a,b) => b-a);
             const latestWeek = completedWeeks[0];
             
-            const splashKey = 'nfl_splash_week_${latestWeek}';
+            const splashKey = `nfl_splash_week_${latestWeek}`;
             if (!localStorage.getItem(splashKey)) {
               
               // NEW GUARDRAIL: Check if there are any games STILL PENDING for this week
@@ -294,7 +295,13 @@ export default function Home() {
     }
   };
 
-const isCommissioner = profile?.role === 'admin' || user?.email === 'chyespelkis@gmail.com';  const displayedGames = games.filter(g => g.week_number === activeWeek && new Date(g.kickoff) > new Date());
+  const isCommissioner = profile?.role === 'admin' || user?.email === 'chyespelkis@gmail.com';  
+  
+  // LEAGUE FILTER LOGIC
+  const displayedGames = games.filter(g => {
+    const gameLeague = g.league || 'NFL';
+    return g.week_number === activeWeek && new Date(g.kickoff) > new Date() && gameLeague === activeLeague;
+  });
 
   if (pageLoading) return <main className="min-h-screen bg-slate-200 flex items-center justify-center font-black uppercase tracking-widest text-brand-dark text-xl">Opening The Book...</main>;
 
@@ -440,6 +447,30 @@ const isCommissioner = profile?.role === 'admin' || user?.email === 'chyespelkis
                   ))}
                 </div>
              )}
+          </div>
+          
+          {/* LEAGUE FILTER TOGGLE */}
+          <div className="flex gap-2 mb-6">
+            <button 
+              onClick={() => setActiveLeague('NFL')}
+              className={`flex-1 py-3 rounded-xl font-black uppercase tracking-widest text-xs transition-all ${
+                activeLeague === 'NFL' 
+                ? 'bg-[#0b0f19] text-brand-volt shadow-lg border-2 border-[#0b0f19]' 
+                : 'bg-white text-gray-400 border-2 border-gray-200 hover:border-gray-300 hover:text-brand-dark shadow-sm'
+              }`}
+            >
+              NFL
+            </button>
+            <button 
+              onClick={() => setActiveLeague('NCAAF')}
+              className={`flex-1 py-3 rounded-xl font-black uppercase tracking-widest text-xs transition-all ${
+                activeLeague === 'NCAAF' 
+                ? 'bg-[#0b0f19] text-brand-volt shadow-lg border-2 border-[#0b0f19]' 
+                : 'bg-white text-gray-400 border-2 border-gray-200 hover:border-gray-300 hover:text-brand-dark shadow-sm'
+              }`}
+            >
+              NCAAF (Top 25)
+            </button>
           </div>
           
           {displayedGames.length === 0 ? (
