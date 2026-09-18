@@ -6,15 +6,7 @@
     },
     {
       "path": "/api/auto-grade",
-      "schedule": "0 */4 * * *"
-    },
-    {
-      "path": "/api/auto-grade",
-      "schedule": "50 19,20 * * 0"
-    },
-    {
-      "path": "/api/auto-grade",
-      "schedule": "0 0,1 * * 1"
+      "schedule": "30 10 * * *"
     }
   ]
 }
