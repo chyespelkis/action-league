@@ -524,10 +524,17 @@ export default function Home() {
                           <span className="font-black text-sm md:text-base leading-none mb-1">{formatLine(awaySpread)}</span>
                           <span className="text-[9px] md:text-[10px] font-bold text-gray-400 group-hover:text-brand-dark/70 leading-none">{formatOdds(awaySpreadOdds)}</span>
                         </button>
-                        <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'moneyline', value: 'ML', odds: awayMl })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
-                          <span className="font-black text-sm md:text-base leading-none mb-1">{awayMl !== '—' ? formatOdds(awayMl) : 'ML'}</span>
-                          <span className="text-[9px] md:text-[10px] font-bold text-gray-400 group-hover:text-brand-dark/70 leading-none">{awayMl !== '—' ? 'ML' : 'Pick Em'}</span>
-                        </button>
+                        {awayMl !== '—' && awayMl !== null ? (
+                          <button onClick={() => setSelectedBet({ game, selection: game.away_abbr, type: 'moneyline', value: 'ML', odds: awayMl })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
+                            <span className="font-black text-sm md:text-base leading-none mb-1">{formatOdds(awayMl)}</span>
+                            <span className="text-[9px] md:text-[10px] font-bold text-gray-400 group-hover:text-brand-dark/70 leading-none">ML</span>
+                          </button>
+                        ) : (
+                          <button disabled className="bg-slate-50 text-gray-300 py-2 rounded-xl border border-gray-100 shadow-sm flex flex-col items-center justify-center cursor-not-allowed">
+                            <span className="font-black text-sm md:text-base leading-none mb-1">—</span>
+                            <span className="text-[9px] md:text-[10px] font-bold uppercase leading-none">No Line</span>
+                          </button>
+                        )}
                         <button onClick={() => setSelectedBet({ game, selection: 'OVER', type: 'total', value: totalVal, odds: overOdds })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
                           <div className="flex items-center gap-1 mb-1">
                             <span className="text-[8px] md:text-[9px] uppercase text-gray-400 font-bold group-hover:text-brand-dark/70 leading-none">O</span>
@@ -545,10 +552,17 @@ export default function Home() {
                           <span className="font-black text-sm md:text-base leading-none mb-1">{formatLine(homeSpread)}</span>
                           <span className="text-[9px] md:text-[10px] font-bold text-gray-400 group-hover:text-brand-dark/70 leading-none">{formatOdds(homeSpreadOdds)}</span>
                         </button>
-                        <button onClick={() => setSelectedBet({ game, selection: game.home_abbr, type: 'moneyline', value: 'ML', odds: homeMl })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
-                          <span className="font-black text-sm md:text-base leading-none mb-1">{homeMl !== '—' ? formatOdds(homeMl) : 'ML'}</span>
-                          <span className="text-[9px] md:text-[10px] font-bold text-gray-400 group-hover:text-brand-dark/70 leading-none">{homeMl !== '—' ? 'ML' : 'Pick Em'}</span>
-                        </button>
+                        {homeMl !== '—' && homeMl !== null ? (
+                          <button onClick={() => setSelectedBet({ game, selection: game.home_abbr, type: 'moneyline', value: 'ML', odds: homeMl })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
+                            <span className="font-black text-sm md:text-base leading-none mb-1">{formatOdds(homeMl)}</span>
+                            <span className="text-[9px] md:text-[10px] font-bold text-gray-400 group-hover:text-brand-dark/70 leading-none">ML</span>
+                          </button>
+                        ) : (
+                          <button disabled className="bg-slate-50 text-gray-300 py-2 rounded-xl border border-gray-100 shadow-sm flex flex-col items-center justify-center cursor-not-allowed">
+                            <span className="font-black text-sm md:text-base leading-none mb-1">—</span>
+                            <span className="text-[9px] md:text-[10px] font-bold uppercase leading-none">No Line</span>
+                          </button>
+                        )}
                         <button onClick={() => setSelectedBet({ game, selection: 'UNDER', type: 'total', value: totalVal, odds: underOdds })} className="bg-slate-50 hover:bg-brand-volt hover:text-brand-dark text-brand-dark py-2 rounded-xl transition-all border border-gray-200 shadow-sm flex flex-col items-center justify-center group">
                           <div className="flex items-center gap-1 mb-1">
                             <span className="text-[8px] md:text-[9px] uppercase text-gray-400 font-bold group-hover:text-brand-dark/70 leading-none">U</span>
