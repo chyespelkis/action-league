@@ -11,16 +11,27 @@ const SPORTS = ['americanfootball_nfl', 'americanfootball_ncaaf'];
 
 export async function GET(request) {
   try {
-    let allFormattedGames = [];
+    const SPORTS = ['americanfootball_nfl', 'americanfootball_ncaaf'];
+    let gamesAdded = 0;
+
+    // 1. CALCULATE THE WEDNESDAY CUTOFF
+    const now = new Date();
+    const cutoffDate = new Date();
+    // 3 represents Wednesday (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat)
+    const daysUntilWednesday = (3 - now.getDay() + 7) % 7 || 7; 
+    cutoffDate.setDate(now.getDate() + daysUntilWednesday);
+    cutoffDate.setHours(12, 0, 0, 0); // Noon UTC on Wednesday
+    
+    // Format for The-Odds-API (ISO 8601)
+    const commenceTimeTo = cutoffDate.toISOString();
 
     for (const sport of SPORTS) {
-      const leagueTag = sport === 'americanfootball_nfl' ? 'NFL' : 'NCAAF';
+      // 2. INJECT THE CUTOFF INTO THE FETCH URL
+      const res = await fetch(`https://api.the-odds-api.com/v4/sports/${sport}/odds/?apiKey=${ODDS_API_KEY}&regions=us&markets=h2h,spreads,totals&oddsFormat=american&commenceTimeTo=${commenceTimeTo}`);
       
-      // Fetch live odds from The-Odds-API (US region, DraftKings/FanDuel focus)
-      const res = await fetch(`https://api.the-odds-api.com/v4/sports/${sport}/odds/?apiKey=${ODDS_API_KEY}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`);
+      if (!res.ok) continue;
       
-      if (!res.ok) throw new Error(`Failed to fetch ${sport} odds`);
-      const gamesData = await res.json();
+      const apiGames = await res.json();
 
       const formattedGames = gamesData.map(game => {
         // Find a reliable sportsbook for the lines (DraftKings is usually first/best)
