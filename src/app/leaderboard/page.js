@@ -47,7 +47,15 @@ export default function Leaderboard() {
       }
 
       const { data: profilesData } = await supabase.from('profiles').select('*');
-      const { data: betsData } = await supabase.from('bets').select(`user_id, wager_amount, odds, status, games (week_number)`);
+      const { data: betsData } = await supabase
+        .from('bets')
+        .select(`
+          user_id, 
+          wager_amount, 
+          odds, 
+          status, 
+          games!inner (week_number)
+        `);
 
       if (profilesData) setProfiles(profilesData);
       if (betsData) setBets(betsData);
