@@ -7,12 +7,11 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const ODDS_API_KEY = process.env.ODDS_API_KEY; // Get this free from the-odds-api.com
-const SPORTS = ['americanfootball_nfl', 'americanfootball_ncaaf'];
 
 export async function GET(request) {
   try {
     const SPORTS = ['americanfootball_nfl', 'americanfootball_ncaaf'];
-    let gamesAdded = 0;
+    let allFormattedGames = []; // FIXED: Initialized the array to hold all games
 
     // 1. CALCULATE THE WEDNESDAY CUTOFF
     const now = new Date();
@@ -32,11 +31,24 @@ export async function GET(request) {
       if (!res.ok) continue;
       
       const apiGames = await res.json();
+      
+      // FIXED: Define league tag based on the current loop iteration
+      const leagueTag = sport === 'americanfootball_nfl' ? 'NFL' : 'NCAAF';
 
-      const formattedGames = gamesData.map(game => {
+      // FIXED: Map over apiGames instead of the undefined gamesData
+      const formattedGames = apiGames.map(game => {
         // Find a reliable sportsbook for the lines (DraftKings is usually first/best)
         const bookmaker = game.bookmakers.find(b => b.key === 'draftkings') || game.bookmakers[0];
         if (!bookmaker) return null;
+
+        // --- AUTOMATED WEEK CALCULATION ---
+        const kickoffDate = new Date(game.commence_time);
+        const seasonStart = new Date('2026-09-08T00:00:00Z'); // Anchor Day: Tuesday before NFL Week 1
+        const diffTime = kickoffDate - seasonStart;
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        let calculatedWeek = Math.floor(diffDays / 7) + 1;
+        if (calculatedWeek < 1) calculatedWeek = 1;
+        // ----------------------------------
 
         let home_ml = null, away_ml = null;
         let home_spread = null, away_spread = null;
@@ -69,7 +81,7 @@ export async function GET(request) {
         return {
           api_id: game.id,
           league: leagueTag,
-          week_number: 2, // You will need to manually increment this each week, or build complex date logic
+          week_number: calculatedWeek, // REPLACED: Now dynamically assigning the week
           home_team: game.home_team,
           home_abbr: game.home_team.substring(0, 3).toUpperCase(), // Basic abbreviation fallback
           away_team: game.away_team,
