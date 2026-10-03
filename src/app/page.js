@@ -261,13 +261,25 @@ export default function Home() {
       // 4. Fire the Whale Alert (Silently)
       if (wager >= 50) {
         const whaleMessages = [
+          // Your Originals
           `${profile?.display_name || 'Someone'} JUST DROPPED A WHALE BET! 🐋💸`,
           `🚨 ALERT: ${profile?.display_name || 'Someone'} is risking the rent money!`,
           `High roller in the building! ${profile?.display_name || 'Someone'} pushed the chips in. 🎰`,
           `🐳 WHALE SIGHTING: ${profile?.display_name || 'Someone'} must know something we don't.`,
           `Heavy action coming in from ${profile?.display_name || 'Someone'}. Fade or follow? 👀`,
           `Vegas is sweating. ${profile?.display_name || 'Someone'} just emptied the clip. 🔫`,
-          `Calling a zero blitz! ${profile?.display_name || 'Someone'} is bringing the house on this bet. 🏈🏠`
+          `Calling a zero blitz! ${profile?.display_name || 'Someone'} is bringing the house on this bet. 🏈🏠`,
+          
+          // The New Additions
+          `🚨 BRINKS TRUCK ALERT: ${profile?.display_name || 'Someone'} just backed it up to the window! 🚛💰`,
+          `🚑 ${profile?.display_name || 'Someone'} just slammed it down. Have the EMTs on standby for the 4th quarter.`,
+          `All gas, no brakes! ${profile?.display_name || 'Someone'} is bringing the 4-down front on this ticket. 😤`,
+          `The Wrecking Crew has arrived! ${profile?.display_name || 'Someone'} is blowing up the board with this wager. 💥`,
+          `Chef's kiss! 👨‍🍳 ${profile?.display_name || 'Someone'} is cooking up a gourmet ticket tonight.`,
+          `Shooting for the pin! ⛳ ${profile?.display_name || 'Someone'} just pulled out the big dog for a massive drive.`,
+          `Checking into Match Quarters! ${profile?.display_name || 'Someone'} has this bet completely locked down. 🔒`,
+          `Serving up the Wagyu and scallops! 🥩🦞 ${profile?.display_name || 'Someone'} is eating good if this hits.`,
+          `It's super effective! 💥 ${profile?.display_name || 'Someone'} just dropped a critical hit on the sportsbooks.`
         ];
         const randomMsg = whaleMessages[Math.floor(Math.random() * whaleMessages.length)];
         
