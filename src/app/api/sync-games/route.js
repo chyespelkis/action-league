@@ -22,7 +22,7 @@ export async function GET(request) {
     cutoffDate.setHours(12, 0, 0, 0); // Noon UTC on Wednesday
     
     // Format for The-Odds-API (ISO 8601)
-    const commenceTimeTo = cutoffDate.toISOString();
+    const commenceTimeTo = cutoffDate.toISOString().split('.')[0] + 'Z';
 
     for (const sport of SPORTS) {
       // 2. INJECT THE CUTOFF INTO THE FETCH URL
