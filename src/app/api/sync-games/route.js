@@ -42,7 +42,7 @@ export async function GET(request) {
         if (!bookmaker) return null;
 
         // --- AUTOMATED WEEK CALCULATION ---
-        const kickoffDate = new Date(game.commence_time);
+        const kickoffDate = new Date(new Date(game.commence_time).getTime() - (12 * 60 * 60 * 1000));
         const seasonStart = new Date('2026-09-08T00:00:00Z'); // Anchor Day: Tuesday before NFL Week 1
         const diffTime = kickoffDate - seasonStart;
         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
