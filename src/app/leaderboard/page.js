@@ -139,7 +139,7 @@ const isCommissioner = currentUserProfile?.role === 'admin' || user?.email === '
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 border-b-2 border-gray-300 pb-4 gap-4">
           <h1 className="text-3xl font-black uppercase italic tracking-tighter text-brand-dark">League Standings</h1>
           
-          <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+          <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide w-full overscroll-x-contain touch-pan-x">
             <button 
               onClick={() => setSelectedView('Dashboard')} 
               className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all shadow-sm ${
